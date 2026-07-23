@@ -8,3 +8,10 @@
 21:50 硬约束锁定：CONSTITUTION.md 30条 + INDEX.md 全映射框架
 
 完成态: 文档体系就绪，代码骨架就绪，等待 Stage 0 (数据预处理) 编码启动
+
+2026-07-23 完整数学推导文档
+
+22:30 创建 PLAN-details.md (800+行): Q1-Q4逐小问变量定义表、核心假设论证、公式分步推导(Box-Cox/SHAP/MIC/TE/TCN/GRU/CSTR/N-BEATS/Sobol/熵权/Jenks DP/Kappa)每步标注物理意义
+22:35 创建 Mermaid建模流程图×5 (Q1-Q4各一张+全题依赖DAG)
+22:40 更新 migration_prompt.md: 新增PLAN-details.md为必读项
+完成态: 数学建模文档完备——sum_1(方案)+specs(架构)+PLAN.md(计划)+PLAN-details.md(数学推导) 四层文档体系就绪

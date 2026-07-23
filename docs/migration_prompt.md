@@ -9,8 +9,9 @@
 ## Step 2: 阅读全部关键文档
 
 ### 必读（项目状态）
-- `Code/docs/specs/2026-07-23-architecture-design.md` — 完整架构规格
 - `Code/PLAN.md` — 分阶段实施计划
+- `Code/PLAN-details.md` — 完整数学推导(800行+): 变量定义表、公式推导、假设论证、Mermaid流程图、消融矩阵
+- `Code/docs/specs/2026-07-23-architecture-design.md` — 完整架构规格
 
 ### 必读（决策历史）
 - `Code/docs/sums/sum_1_题目分析与建模方案.md` — 题目分析、模型选择、创新点

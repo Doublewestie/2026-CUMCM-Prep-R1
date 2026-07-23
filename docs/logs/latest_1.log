@@ -66,13 +66,30 @@
   5. RW_NTU→NTU直接r=0.04 — 99%处理效率导致输入输出解耦
   6. L5预定义交互特征全部不显著 — 树模型内部已学交互, 预定义冗余
 
+02:30 函数关系式输出 + GAM偏依赖可视化:
+  1. Ridge在全量数据上提取显式公式, 输出 q1_function_formula.txt:
+     log(1+NTU) = 1.407 - 0.287*CLR - 0.262*eta + 0.255*(-ln eta) + 0.149*FILT_NTU + ...
+     Ridge全量R2=0.699 ★物理幂次项展开使得线性模型可解释性大幅提升
+  2. GAM偏依赖曲线(前5特征边际效应), 输出 q1_gam_partial_dependence.csv + PNG
+     GAM全量R2=0.513, 各特征的加性非线性边际效应可独立绘制
+  3. q1_ridge_coefficients.csv: 全部25个特征的Ridge系数(正负方向+量级)
+  4. 新增 step1.5 GAM偏依赖图: q1_gam_partial_dependence.png
+
 ---
+
+Q1文件→题目子问题对应:
+  1.1 主要影响因素排名: feature_importance.csv
+  1.1 影响力数值: SHAP_norm + Perm_norm 列
+  1.1 作用方向: SHAP beeswarm图(红=推高NTU, 蓝=拉低NTU)
+  1.1 函数关系式: q1_function_formula.txt (显式公式) + GAM偏依赖图(边际效应曲线)
+  1.2 预测三天NTU: 待step3加载2026数据后实现(当前XGBoost模型已就绪)
+  1.2 验证正确性(RMSE/R2): q1_model_summary.csv + q1_model_comparison.csv
 
 变更记录:
   - step0_config.py: 新增全局参数, 删F_RIDE+DROP_F_RIDE标志
   - step0_preprocess.py: 完整数据清洗+插补+Box-Cox+特征工程(含幂次项)
   - step1.0_feature_selection.py: SHAP+Permutation双重验证
-  - step1.1_model_comparison.py: 渐进式建模+5折时序交叉验证
+  - step1.1_model_comparison.py: 渐进式建模+5折CV+函数公式提取+GAM偏依赖
   - step1.2_shap_interaction.py: L5交互特征二阶段检验
-  - step1.5_visualization.py: Q1统一出图(beeswarm+bar+预测vs实际)
+  - step1.5_visualization.py: Q1出图(beeswarm+bar+预测vs实际+GAM偏依赖)
   - .gitignore: 新增output/, _repo_clone/, _analyze.py

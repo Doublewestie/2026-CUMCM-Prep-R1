@@ -238,6 +238,122 @@ def main():
     print(f"{'='*70}")
 
     # ========================
+    # 函数关系式：Ridge在全量数据上训练→提取显式公式
+    # ========================
+    print(f"\n{'='*60}")
+    print(f"  Q1.1 Function Relationship (Ridge on full data)")
+    print(f"{'='*60}")
+
+    # Ridge on full data (log1p space)
+    ridge_full = Ridge(alpha=1.0)
+    ridge_full.fit(X_sel, y_trans)
+    coef = ridge_full.coef_
+    intercept = ridge_full.intercept_
+
+    # 选取 |coef| 最大的 8 个特征
+    top_indices = np.argsort(np.abs(coef))[::-1][:8]
+    formula_terms = []
+    for idx in top_indices:
+        name = sel_names[idx]
+        c = coef[idx]
+        sign = "+" if c >= 0 else "-"
+        # 幂次项用友好的显示名
+        display = name.replace("FILT_sq", "FILT_NTU^2")\
+                       .replace("FILT_sqrt", "sqrt(FILT_NTU)")\
+                       .replace("FILT_cubert", "FILT_NTU^(1/3)")\
+                       .replace("neg_ln_eta", "(-ln eta)")\
+                       .replace("eta_coag", "eta")\
+                       .replace("PI_load", "RW_NTU*RW_FLOW")\
+                       .replace("PSI_alum", "ALUM*RW_FLOW")\
+                       .replace("GAMMA_alum", "ALUM/RW_NTU")
+        formula_terms.append(f"  {sign} {abs(c):.4f} * {display}")
+
+    formula_lines = [
+        "Q1.1 Explicit Function (Ridge Regression in log1p space)",
+        "==========================================================",
+        "",
+        f"log(1 + NTU) = {intercept:.4f}",
+        *formula_terms,
+        "",
+        f"R2 (full data fit) = {r2_score(y_trans, ridge_full.predict(X_sel)):.4f}",
+        "",
+        "=== Inverse transform: NTU = exp(formula) - 1 ===",
+        "",
+        "Note: This is a PHYSICS-INSPIRED polynomial approximation.",
+        "  - FILT_NTU^2 : filter breakthrough nonlinearity (NTU rises faster at high turbidity)",
+        "  - sqrt(FILT_NTU) : low-range sensitivity (diffusion-controlled at clean conditions)",
+        "  - (-ln eta) : first-order reaction kinetics (dC/dt = -kC => C = C0*e^{-kt})",
+        "  - ALUM/RW_NTU : coagulant dosing ratio (insufficient dosing => sharp deterioration)",
+    ]
+    formula_text = "\n".join(formula_lines)
+
+    formula_path = os.path.join(OUTPUT_DIR, "q1_function_formula.txt")
+    with open(formula_path, "w", encoding="utf-8") as f:
+        f.write(formula_text)
+    print(formula_text)
+    print(f"\n  [OUTPUT] {formula_path}")
+
+    # Ridge全部特征系数表
+    coef_df = pd.DataFrame({
+        "feature": sel_names,
+        "coefficient": coef,
+        "abs_coef": np.abs(coef),
+    }).sort_values("abs_coef", ascending=False)
+    coef_path = os.path.join(OUTPUT_DIR, "q1_ridge_coefficients.csv")
+    coef_df.to_csv(coef_path, index=False, encoding="utf-8-sig")
+    print(f"  [OUTPUT] {coef_path}")
+
+    # ========================
+    # GAM偏依赖数据（每个特征的影响曲线）
+    # ========================
+    print(f"\n{'='*60}")
+    print(f"  Q1.1 GAM Partial Dependence (Top {GAM_TOP_K} features)")
+    print(f"{'='*60}")
+
+    top_k = min(GAM_TOP_K, X_sel.shape[1])
+    try:
+        from pygam import LinearGAM, s, f as gam_f
+        gam = LinearGAM(
+            s(0) + s(1) + s(2) + s(3) + s(4) if top_k >= 5
+            else sum([s(i) for i in range(top_k)]),
+            n_splines=GAM_N_SPLINES
+        )
+        gam.fit(X_sel[:, :top_k], y_trans)
+        gam_r2 = r2_score(y_trans, gam.predict(X_sel[:, :top_k]))
+        print(f"  GAM R2 (full data fit) = {gam_r2:.4f}")
+
+        # 每个特征的偏依赖数据
+        pd_data = {}
+        for i in range(top_k):
+            name = sel_names[i]
+            XX = gam.generate_X_grid(term=i, n=100)
+            pd_vals = gam.partial_dependence(term=i, X=XX)
+            pd_data[f"{name}_x"] = XX[:, i].flatten()
+            pd_data[f"{name}_pd"] = pd_vals.flatten()
+
+        pd_df = pd.DataFrame(pd_data)
+        pd_path = os.path.join(OUTPUT_DIR, "q1_gam_partial_dependence.csv")
+        pd_df.to_csv(pd_path, index=False, encoding="utf-8-sig")
+        print(f"  [OUTPUT] {pd_path}")
+
+        # 保存GAM模型
+        gam_path = os.path.join(OUTPUT_DIR, "q1_gam_model.pkl")
+        joblib.dump(gam, gam_path)
+
+    except ImportError:
+        print("  [SKIP] pygam not available, partial dependence not generated")
+
+    # ========================
+    # 2026年三天预测（step1.1最终输出）
+    # ========================
+    print(f"\n{'='*60}")
+    print(f"  Q1.2 2026 Prediction (XGBoost on full data)")
+    print(f"{'='*60}")
+    print("  NOTE: 2026 prediction requires loading cleaned 2026 data.")
+    print("  Feature construction for 2026 will be done in step3.")
+    print(f"{'='*60}")
+
+    # ========================
     # 输出 CSV
     # ========================
     out_csv = os.path.join(OUTPUT_DIR, "q1_model_comparison.csv")

@@ -5,6 +5,7 @@ step1.5_visualization.py — Q1 统一出图
   1. SHAP beeswarm 图（前 30 个最重要特征）
   2. 特征重要性柱状图（按 robust_score 降序）
   3. 预测 vs 实际散点图（四模型颜色区分）
+  4. GAM 偏依赖图（函数关系可视化）
 """
 
 import numpy as np
@@ -174,7 +175,55 @@ def plot_predictions_vs_actual():
     plt.tight_layout()
     fig.savefig(os.path.join(FIG_DIR, "q1_pred_vs_actual.png"), dpi=300)
     plt.close()
-    print("  → q1_pred_vs_actual.png")
+    print("  -> q1_pred_vs_actual.png")
+
+
+def plot_gam_partial_dependence():
+    """GAM偏依赖图 — 每个特征对NTU的边际效应曲线"""
+    pd_path = os.path.join(OUTPUT_DIR, "q1_gam_partial_dependence.csv")
+    if not os.path.exists(pd_path):
+        print("  [SKIP] GAM partial dependence CSV not found")
+        return
+
+    print("  Plotting GAM partial dependence...")
+    df_pd = pd.read_csv(pd_path)
+
+    # 解析列名：每对各有一列_x和_pd
+    pairs = []
+    for col in df_pd.columns:
+        if col.endswith("_x"):
+            base = col[:-2]
+            pd_col = f"{base}_pd"
+            if pd_col in df_pd.columns:
+                pairs.append((base, col, pd_col))
+
+    n = len(pairs)
+    cols = min(n, 3)
+    rows = (n + cols - 1) // cols
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+    axes = np.atleast_1d(axes).flatten()
+
+    for i, (name, x_col, pd_col) in enumerate(pairs[:rows * cols]):
+        ax = axes[i]
+        x = df_pd[x_col].values
+        pd_vals = df_pd[pd_col].values
+        pd_real = boxcox_inverse(pd_vals, 0.0)
+
+        ax.plot(x, pd_real, color="#2E86AB", linewidth=2)
+        ax.fill_between(x, pd_real, alpha=0.1, color="#2E86AB")
+        ax.set_xlabel(name.replace("_", " "), fontsize=9)
+        ax.set_ylabel("NTU marginal effect", fontsize=9)
+        ax.grid(True, alpha=0.2)
+
+    for j in range(i + 1, len(axes)):
+        axes[j].set_visible(False)
+
+    fig.suptitle("Q1: GAM Partial Dependence (Marginal Effect of Top Features on NTU)",
+                 fontsize=13)
+    plt.tight_layout()
+    fig.savefig(os.path.join(FIG_DIR, "q1_gam_partial_dependence.png"), dpi=300)
+    plt.close()
+    print("  -> q1_gam_partial_dependence.png")
 
 
 def main():
@@ -196,11 +245,15 @@ def main():
     # 3. 预测 vs 实际
     plot_predictions_vs_actual()
 
+    # 4. GAM 偏依赖图（函数关系可视化）
+    plot_gam_partial_dependence()
+
     print(f"\n{'='*60}")
-    print(f"  [DONE] 图表输出至 {FIG_DIR}/")
+    print(f"  [DONE] Charts output to {FIG_DIR}/")
     print(f"    q1_shap_beeswarm.png")
     print(f"    q1_feature_importance.png")
     print(f"    q1_pred_vs_actual.png")
+    print(f"    q1_gam_partial_dependence.png")
     print(f"{'='*60}")
 
 

@@ -219,3 +219,8 @@ __marimo__/
 
 # docs logs should be tracked (human-facing zone per agent-memory skill)
 !docs/logs/*.log
+
+# Generated output
+output/
+_repo_clone/
+_analyze.py

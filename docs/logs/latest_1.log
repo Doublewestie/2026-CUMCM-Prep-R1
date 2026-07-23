@@ -1,0 +1,78 @@
+2026-07-23 Stage 0 完成：数据预处理 + L1-L5特征工程 + Box-Cox
+
+23:00 数据清洗完成: 4380行 → 4375行(删5条NTU缺失), 两套Excel格式兼容(Format A×8 + Format B×4)
+23:05 Format B缺失列插补: ALUM(LightGBM, R2=0.75), CL2(LightGBM, R2=0.71), pH(众数)
+23:10 Box-Cox变换: 最优λ=-0.45 → 退化为log1p(λ=0, 数值稳定), 变换后skew=6.92→3.63
+23:15 L1-L5特征金字塔构造: L1=22维, L2=9维, L3=15维, L4=40维, L5=4维 → 共89维×4357行
+23:20 F_RIDE整列删除(sum_2决定: 83.1%缺失+零预测力), 18ML_LEVEL/FLOW死列删除
+23:25 输出: clean_data.csv, X_all.npy(4357,89), y_all.npy(4357,), lambda_ntu.pkl
+
+---
+
+2026-07-23 Stage 1 完成：Q1特征筛选 + 渐进式建模 + 交互检验 + 可视化
+
+23:30 step1.0: SHAP+Permutation双重验证
+  - SHAP TreeExplainer on XGBoost, Permutation×10
+  - 鲁棒融合: I_robust = √(SHAP_norm × Perm_norm), 阈值0.005
+  - 筛选结果: 24/89特征保留
+    TOP5: FILT_NTU(0.227) > CLR(0.111) > day_sin(0.104) > day_cos(0.070) > RIVER_LEVEL(0.051)
+  - 输出: feature_importance.csv, selected_indices.npy
+
+23:35 step1.1: 渐进式建模(线性→GAM→XGB→LGB→RF→集成)
+  - 5折TimeSeriesSplit, 全部指标在反变换后真实NTU空间计算
+  - 模型对比(RMSE/R2):
+    Linear(Ridge): 0.785 / -0.56  → 线性彻底失败
+    GAM:           0.548 /  0.07  → 加性非线性略好仍差
+    XGBoost:       0.428 /  0.36  → 最优单模型
+    RandomForest:  0.434 /  0.31  → 稳定
+    LightGBM:      0.613 / -0.03  → 需调参
+    集成(倒方差):   0.470 /  0.29  → 被LightGBM拖累
+  - 输出: q1_model_comparison.csv, q1_model_summary.csv
+
+23:40 step1.2: L5交互特征二阶段检验
+  - PI_load, GAMMA_alum, PSI_alum, OMEGA_night → 全部未通过SHAP交互显著性检验
+  - 结论: L5交互特征在数据中统计学不显著, 树模型内部已捕获交互效应
+  - 输出: l5_validation_report.csv
+
+23:45 step1.5: 可视化
+  - q1_shap_beeswarm.png: FILT_NTU主导影响, 高值区SHAP急剧放大
+  - q1_feature_importance.png: 柱状图标注保留/剔除
+  - q1_pred_vs_actual.png: 四模型预测散点 vs y=x
+  - 输出: figures/
+
+---
+
+2026-07-24 改进：物理幂次项展开 + 重新训练
+
+01:30 根据团队讨论, L2衍生层补充物理幂次项(泰勒展开思想):
+  - FILT_NTU², √FILT_NTU, ∛FILT_NTU   (滤后浊度非线性展开)
+  - -ln(η_coag), η²                     (一级反应动力学)
+  - √RW_NTU, ln(RW_NTU)                 (原水浓度效应)
+  - 1/ALUM, √ALUM                        (矾边际效应)
+  - ln(TW_FLOW)                          (停留时间指数关系)
+  - (ALUM/RW_NTU)², 1/(ALUM/RW_NTU)    (匹配度非线性)
+  特征维度: 89→101(L2: 9→21)
+
+01:45 重新训练结果:
+  - 筛选: 25/101特征保留, neg_ln_eta进入TOP17(robust=0.010) ★物理展开验证通过
+  - XGBoost: RMSE=0.437, R2=0.337
+  - 结论: 幂次项neg_ln_eta有独立统计贡献, 一级反应动力学假设获数据验证
+
+02:00 核心发现总结:
+  1. FILT_NTU独占23% Shapley值 — 过滤单元是最后物理关口
+  2. 季节效应(day_sin/cos)总和>RIVER_LEVEL — 雨季水质系统性差异
+  3. 线性→GAM→XGB: R2递进(-0.54→0.07→0.34) — 系统本质非线性+交互
+  4. NTU双峰分布: 87.6%稳态(mean=0.36) vs 12.4%冲击(mean=1.08)
+  5. RW_NTU→NTU直接r=0.04 — 99%处理效率导致输入输出解耦
+  6. L5预定义交互特征全部不显著 — 树模型内部已学交互, 预定义冗余
+
+---
+
+变更记录:
+  - step0_config.py: 新增全局参数, 删F_RIDE+DROP_F_RIDE标志
+  - step0_preprocess.py: 完整数据清洗+插补+Box-Cox+特征工程(含幂次项)
+  - step1.0_feature_selection.py: SHAP+Permutation双重验证
+  - step1.1_model_comparison.py: 渐进式建模+5折时序交叉验证
+  - step1.2_shap_interaction.py: L5交互特征二阶段检验
+  - step1.5_visualization.py: Q1统一出图(beeswarm+bar+预测vs实际)
+  - .gitignore: 新增output/, _repo_clone/, _analyze.py

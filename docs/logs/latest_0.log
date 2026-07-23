@@ -15,3 +15,14 @@
 22:35 创建 Mermaid建模流程图×5 (Q1-Q4各一张+全题依赖DAG)
 22:40 更新 migration_prompt.md: 新增PLAN-details.md为必读项
 完成态: 数学建模文档完备——sum_1(方案)+specs(架构)+PLAN.md(计划)+PLAN-details.md(数学推导) 四层文档体系就绪
+
+2026-07-23 补充三处建模缺口
+
+23:00 补充PLAN-details.md:
+  - 4.3.3: CSTR级数N的KS距离拟合(式42b-42d, N in 1..15)
+  - 4.3.4: 工况感知门控机制完整数学定义(式42e-42i):
+    gate_output(softmax特征层权重), anomaly_score(马氏距离), confidence(tanh聚合)
+  - 6: 2025→2026跨年度数据推理策略(6.1-6.4含Mermaid)
+  修正: 元特征矩阵40→43维(新增confidence维度)
+23:05 更新日志完成
+完成态: PLAN-details.md 1081行, 三处缺口已闭合

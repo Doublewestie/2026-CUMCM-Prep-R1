@@ -18,8 +18,9 @@
 3. [Q2: 滤后水浊度动态时滞模型](#3-q2-滤后水浊度动态时滞模型)
 4. [Q3: 出厂水浊度6-12h混合预测模型](#4-q3-出厂水浊度6-12h混合预测模型)
 5. [Q4: 水质风险四等级评价模型](#5-q4-水质风险四等级评价模型)
-6. [跨题依赖关系与统一Loss设计](#6-跨题依赖关系与统一loss设计)
-7. [附录A: 全局参数表](#附录a-全局参数表)
+6. [2025→2026跨年度数据推理策略](#6-2025→2026跨年度数据推理策略)
+7. [跨题依赖关系与统一Loss设计](#7-跨题依赖关系与统一loss设计)
+8. [附录A: 全局参数表](#附录a-全局参数表)
 8. [附录B: 五级特征金字塔完整定义](#附录b-五级特征金字塔完整定义)
 9. [附录C: 文件命名规范(math-name)](#附录c-文件命名规范math-name)
 10. [附录D: 消融实验矩阵完整设计](#附录d-消融实验矩阵完整设计)
@@ -538,13 +539,63 @@ $$C_{out}(t+1) = C_{out}(t) + \frac{\Delta t}{\tau_{cstr}(t)} \cdot (C_{in}(t) -
 
 > **物理意义**: 式(42)揭示了清水池的平滑机制——$\Delta t / \tau_{cstr}(t)$是每个步长内的"替换比例"。$\tau_{cstr}$大(停留时间长)→替换比例小→$C_{out}$变化缓慢(大缓冲池平滑效果好)。$\tau_{cstr}$小(停留时间短)→替换比例大→$C_{out}$快速响应$C_{in}$变化(小缓冲池平滑效果差)。**物理子模型不做任何训练, 所有参数从传感器数据直接推导。它不出现在架构图中作为独立预测组件——而是溶解在元特征"physics_safety"以及RF输出层的硬裁剪中。**
 
-#### 4.3.4 元特征矩阵$\mathbf{M}^{(t)} \in \mathbb{R}^{40}$的构造
+**CSTR级数$N$的估计** — Kolmogorov-Smirnov距离拟合:
 
-$$ \mathbf{M}^{(t)} = [\underbrace{\hat{y}_{multi}(t+1:t+H)}_{H维}, \underbrace{\hat{y}_{uni}(t+1:t+H)}_{H维}, \underbrace{\mathbf{h}_{multi}[0:8]}_{8维}, \underbrace{\boldsymbol{\alpha}_{attn}[0:4]}_{4维}, \underbrace{u_{uni}(t)}_{1维}, \underbrace{\Delta\hat{y} = \hat{y}_{multi} - \hat{y}_{uni}}_{H维}, \underbrace{d_{multi}(t)}_{1维}, \underbrace{d_{uni}(t)}_{1维}, \underbrace{d_{neg\_multi}(t)}_{1维}, \underbrace{d_{neg\_uni}(t)}_{1维}, \underbrace{safety(t)}_{1维}, \underbrace{month(t)}_{1维}, \underbrace{hour_{sin}(t), hour_{cos}(t)}_{2维}, \underbrace{volatility(t)}_{1维}, \underbrace{gate_{output}(t)}_{1维}, \underbrace{anomaly_{score}(t)}_{1维} ]^T $$
+$N$是CSTR串联模型的唯一自由参数。对于给定的$N$，CSTR模型的停留时间分布为$E_N(\theta)=\frac{N^N\theta^{N-1}e^{-N\theta/\tau}}{\tau^N(N-1)!}$。流体从清水池入口到出口的总传递函数(卷积核)为$h_N(k)=E_N(k\Delta t)\cdot\Delta t, k=0,1,...,K$。将训练集中FILT.NTU作为"入流浓度"、NTU作为"出流浓度"，理论上出流=入流与$h_N$的离散卷积：
 
-> **物理意义**: 式(43)的40维元特征矩阵是RF元学习器做"条件判断"的全部依据。关键设计: (a) **两源预测值**——让RF知道每个源"说了什么"；(b) **两源分歧**$\Delta\hat{y}$——分歧本身就是信号(分歧小→置信高, 分歧大→需仲裁)；(c) **隐藏表示**——TCN/GRU的内部状态编码了比标量预测更丰富的模式信息；(d) **物理一致度**$d_{multi},d_{uni},safety$——告诉RF"此刻哪个源在挑战物理定律"；(e) **环境上下文**——让RF知道"当下是什么工况"。**对比仅给RF看3个标量预测值(输出融合)，40维元特征提供了完整的决策上下文。**
+$$\hat{C}_{out}^{(N)}(t) = \sum_{k=0}^{K} C_{in}(t-k) \cdot h_N(k)$$
 
-#### 4.3.5 RF元学习器: 条件推理(非输出融合)
+> **物理意义**: 式(42b)是CSTR串联模型的卷积形式——出水浓度=入流浓度与RTD的卷积。$\hat{C}_{out}^{(N)}$是不含任何可训练参数的纯物理预测。与模型预测不同，它仅基于质量守恒+RTD假设。
+
+将$\hat{C}_{out}^{(N)}(t)$与真实的出厂NTU序列$Y_{out}(t)$比较，计算经验累积分布函数(CDF)的最大偏差：
+
+$$D_{KS}(N) = \max_{x} \left| \hat{F}_N(x) - F_{data}(x) \right|$$
+
+其中$\hat{F}_N$是$\hat{C}_{out}^{(N)}$的经验CDF，$F_{data}$是真实$Y_{out}$的CDF。
+
+$$N_{opt} = \arg\min_{N \in \{1,2,...,15\}} D_{KS}(N)$$
+
+> **物理意义**: 式(42d)在1到15之间搜索最优$N$。$N=1$对应全混流(出口浓度立即等于平均浓度→波动完全抹平)；$N \to \infty$对应活塞流(出口浓度=延迟后的入口浓度→波动不衰减)。$D_{KS}$越小→CSTR模型的统计分布越接近真实数据。**$N_{opt}$不是用于精确预测——物理模型不出现在融合架构的输出端。$N_{opt}$用于确定RF输出层的硬上界($N=10$, 保守)和参考下界($N=2$, 宽松)。在论文中讨论N的灵敏度即可。**
+
+#### 4.3.4 工况感知门控机制 (SNN信号门控思想的迁移)
+
+门控机制不参与预测，而是为元特征矩阵提供三个**工况诊断信号**: `gate_output`(特征层级权重)、`anomaly_score`(异常度分数)、`confidence`(自评估置信度)。其数学定义如下:
+
+**输入**: 环境上下文向量 $\mathbf{c}(t) = [month(t), hour_{sin}(t), hour_{cos}(t), volatility(t), \mu_{NTU}(t), \Delta_{NTU}(t)] \in \mathbb{R}^{6}$
+
+**(a) 特征层级权重** `gate_output` — 当前工况下L1-L5各层的注意力分数:
+
+$$\mathbf{g}_{feat}(t) = \text{softmax}(\mathbf{W}_{feat} \cdot \mathbf{c}(t) + \mathbf{b}_{feat}), \quad \mathbf{g}_{feat} \in \mathbb{R}^{5}$$
+
+> **物理意义**: 式(42e)的输出是一个5维向量，分别对应L1-L5在当前时刻的注意力权重。**稳态**(低volatility, 低ΔNTU)→L1/L2权重高(原始+衍生特征足矣)；**突变**(高volatility, 高ΔNTU)→L3/L4权重升高(需要历史和趋势)；**冲击**(ΔNTU超过阈值)→L5被激活(交互特征帮助识别非线性模式)。**$\mathbf{W}_{feat} \in \mathbb{R}^{5 \times 6}$和$\mathbf{b}_{feat} \in \mathbb{R}^{5}$是轻量可学习参数(仅36个)，通过弱监督信号训练——目标是在训练集上让门控权重最大化源A的预测精度。**
+
+取L5权重标量作为元特征`gate_output(t) = g_{feat}^{(5)}(t)`——值越大→当前越需要补交互特征(可能是非线性事件)。
+
+**(b) 异常分数** `anomaly_score` — 当前工况偏离"正常模式"的程度:
+
+$$\mathbf{\mu}_{ref} = \frac{1}{n_{train}}\sum_{t \in train} \mathbf{c}(t), \quad \mathbf{\Sigma}_{ref} = \frac{1}{n_{train}-1}\sum_{t \in train} (\mathbf{c}(t)-\mathbf{\mu}_{ref})(\mathbf{c}(t)-\mathbf{\mu}_{ref})^T$$
+
+$$a(t) = \sqrt{(\mathbf{c}(t) - \mathbf{\mu}_{ref})^T \mathbf{\Sigma}_{ref}^{-1} (\mathbf{c}(t) - \mathbf{\mu}_{ref})}$$
+
+$$\text{anomaly\_score}(t) = \min\left(1, \frac{a(t) - a_{p50}}{a_{p99} - a_{p50}}\right)$$
+
+> **物理意义**: 式(42f)-(42h)中$\mathbf{\mu}_{ref}$是训练集上"正常工况"的中心，$\mathbf{\Sigma}_{ref}^{-1}$是马氏距离的度量矩阵(考虑了各维度之间的相关性)。马氏距离$a(t)$越大→当前工况越"不寻常"。式(42h)将$a(t)$映射到[0,1]: $a_{p50}$(正常基线)→anomaly≈0；$a_{p99}$(训练集中最异常的1%工况)→anomaly→1。**用途**: anomaly_score高→模型可能遇到训练集中罕见的工况→RF元学习器应该更保守(倾向物理约束)。
+
+**(c) 自评估置信度** `confidence` — 模型对于当前预测的确定性估计:
+
+$$\text{confidence}(t) = 1 - \tanh\left(\beta \cdot \left[ \underbrace{\|\mathbf{h}_{multi}^{(t)} - \mathbf{\mu}_{hidden}\|_2}_{\text{隐藏态偏离度}} + \underbrace{\text{anomaly\_score}(t)}_{\text{工况异常度}} + \underbrace{\frac{\sigma_{pred}}{\mu_{pred}}}_{\text{预测变异系数}} \right]\right)$$
+
+> **物理意义**: 式(42i)中$\beta=0.5$控制衰减速率。三个分量的物理含义: ①**隐藏态偏离度**: GRU的隐状态$\mathbf{h}_{multi}$偏离训练集的平均隐状态$\mathbf{\mu}_{hidden}$→模型"没见过这种状态"→低置信。②**工况异常度**: 环境偏离正常模式→低置信。③**预测变异系数**: 源A和源B的预测值分歧程度(两源分歧大→任一模型可能出错)→低置信。$\tanh$将总分映射到[0,1]→1-conf∈[0,1]，置信度接近1→高度确定；接近0→高度不确定。**用途**: confidence低→RF应偏向物理安全边界而非数据驱动的预测。
+
+**门控的训练**: 门控机制通过弱监督训练——损失函数中加入$\lambda_{gate} \cdot \| \text{confidence} - \text{oracle\_accuracy} \|^2$（oracle_accuracy是事后回溯的训练集准确率），引导门控学会准确的置信度估计。$\lambda_{gate}=0.001$（最弱项，不对主任务造成干扰）。
+
+#### 4.3.5 元特征矩阵$\mathbf{M}^{(t)} \in \mathbb{R}^{43}$的构造
+
+$$ \mathbf{M}^{(t)} = [\underbrace{\hat{y}_{multi}(t+1:t+H)}_{H维}, \underbrace{\hat{y}_{uni}(t+1:t+H)}_{H维}, \underbrace{\mathbf{h}_{multi}[0:8]}_{8维}, \underbrace{\boldsymbol{\alpha}_{attn}[0:4]}_{4维}, \underbrace{u_{uni}(t)}_{1维}, \underbrace{\Delta\hat{y} = \hat{y}_{multi} - \hat{y}_{uni}}_{H维}, \underbrace{d_{multi}(t)}_{1维}, \underbrace{d_{uni}(t)}_{1维}, \underbrace{d_{neg\_multi}(t)}_{1维}, \underbrace{d_{neg\_uni}(t)}_{1维}, \underbrace{safety(t)}_{1维}, \underbrace{month(t)}_{1维}, \underbrace{hour_{sin}(t), hour_{cos}(t)}_{2维}, \underbrace{volatility(t)}_{1维}, \underbrace{gate_{output}(t)}_{1维}, \underbrace{anomaly_{score}(t)}_{1维}, \underbrace{confidence(t)}_{1维} ]^T $$
+
+> **物理意义**: 式(43)的43维元特征矩阵是RF元学习器做"条件判断"的全部依据。关键设计: (a) **两源预测值**——让RF知道每个源"说了什么"；(b) **两源分歧**$\Delta\hat{y}$——分歧本身就是信号(分歧小→置信高, 分歧大→需仲裁)；(c) **隐藏表示**——TCN/GRU的内部状态编码了比标量预测更丰富的模式信息；(d) **物理一致度**$d_{multi},d_{uni},safety$——告诉RF"此刻哪个源在挑战物理定律"；(e) **门控信号**$gate_{output}, anomaly_{score}, confidence$——三个工况诊断维为RF提供"现在是什么工况、模型有多确定"的元认知信息；(f) **环境上下文**——让RF知道"当下是什么季节/时段"。**对比仅给RF看3个标量预测值(输出融合)，43维元特征提供了完整的决策上下文。**
+
+#### 4.3.6 RF元学习器: 条件推理(非输出融合)
 
 RF(Random Forest)在40维元特征矩阵上学习从元特征到最终预测的映射:
 
@@ -562,7 +613,7 @@ $$\hat{y}_{final}(t+h) \leftarrow \max\left(\hat{y}_{final}(t+h),\ 0\right)$$
 
 > **物理意义**: 式(45)-(46)是输出层的"物理安全网"——无论RF学到什么映射, 最终输出必须在$[0, X_{raw}]$范围内。$C_{out} > C_{in}$物理不可能→强制裁剪。这是最后一个防线: 如果RF学到了错误的映射（如在数据稀疏区域违反了物理），硬裁剪保证预测值不会离谱。
 
-#### 4.3.6 Sobol全局敏感性分析
+#### 4.3.7 Sobol全局敏感性分析
 
 **一阶效应** — 变量$X_i$独立贡献的方差比例:
 
@@ -582,7 +633,7 @@ $$\hat{S}_{Ti} = \frac{\frac{1}{2N}\sum_{j=1}^{N} (f(\mathbf{A})_j - f(\mathbf{A
 
 > **物理意义**: 式(47)-(50)区分了"主效应"和"交互效应"。$S_i$大 → $X_i$单独对预测方差贡献大(如R/W NTU单独主导预测)。$S_i$小但$S_{Ti}$大 → $X_i$主要通过与其他变量的交互作用影响预测(如ALUM仅在与R/W NTU的比值($\Gamma_{alum}$)中显现重要性——这正是L5交互特征存在的物理依据)。Sobol分析优于"一次只扰动一个变量"(OAT)法的地方在于: OAT只能看到一阶效应, 无法发现交互效应。
 
-#### 4.3.7 统一Loss函数
+#### 4.3.8 统一Loss函数
 
 $$\begin{aligned} \mathcal{L}_{Q3} = &\frac{1}{nH}\sum_{t=1}^{n}\sum_{h=1}^{H} \rho_\delta(\hat{y}(t+h) - y(t+h)) \quad &\text{(多步Huber)} \\ + &\frac{\lambda_1}{nH}\sum_{t=1}^{n}\sum_{h=1}^{H} \max(0, \hat{y}(t+h) - \hat{y}_{phys\_upper}(t+h)) \quad &\text{(物理上界, $\lambda_1=1.0$, 最强)} \\ + &\frac{\lambda_2}{n(H-1)}\sum_{t=1}^{n}\sum_{h=2}^{H} |\hat{y}(t+h) - \hat{y}(t+h-1)| \quad &\text{(时序平滑, $\lambda_2=0.1$, 弱)} \\ + &\frac{\lambda_3}{n}\sum_{t=1}^{n} |\text{attn\_weights} - \text{oracle\_trust}| \quad &\text{(一致性, $\lambda_3=0.01$, 最弱)} \end{aligned}$$
 
@@ -839,7 +890,82 @@ flowchart TD
 
 ---
 
-## 6. 跨题依赖关系与统一Loss设计
+## 6. 2025→2026跨年度数据推理策略
+
+### 6.1 数据格式差异的根本原因分析
+
+| 维度 | 2025年训练集 | 2026年测试集 |
+|------|:---:|:---:|
+| 月文件数 | 12个月(1-12月) | 3个月(1-3月) |
+| 行数/月 | 336-372行 | 12行 |
+| 采样频率 | 每日12次(每2h: 100,300,...,2300) | 降采样(非完整2h数据) |
+| TIME列值 | 100-2300 (每2h一步) | 700-... (稀疏) |
+| 数据密度 | 高(371行/月均值) | 极低(12行/月) |
+| NTU列 | 有值 | 2026年2月NTU全NaN |
+
+**根本原因推断**: 2026年的12行/月不是完整的2h观测序列，而是一个**降采样的摘要数据集**(可能每天选取了代表性时刻，或仅包含特定操作点的记录)。TIME列的700/900/1100...编码也不同于2025年的完整2h周期编码。**2026年数据不能直接用于训练时序模型——它只能作为最终预测演示的目标时点。**
+
+### 6.2 训练策略
+
+**核心原则**: 全部模型训练、调参、验证**仅使用2025年4380行完整数据**。2026年的36行在任何情况下不参与训练、不参与验证集、不参与调参。
+
+**TimeSeriesSplit(5折)验证** (在2025年数据上):
+
+```python
+from sklearn.model_selection import TimeSeriesSplit
+tscv = TimeSeriesSplit(n_splits=5)
+for fold, (train_idx, val_idx) in enumerate(tscv.split(X_2025)):
+    # Fold 0: train = months 1-2,  val = month 3
+    # Fold 1: train = months 1-4,  val = month 5
+    # Fold 2: train = months 1-6,  val = month 7
+    # Fold 3: train = months 1-8,  val = month 9
+    # Fold 4: train = months 1-10, val = month 11
+    # 最终Holdout = month 12 (不参与任何训练/调参)
+```
+
+> **设计理由**: 时序交叉验证保证训练集总是在验证集的"过去"。覆盖了全年不同季节(旱季Fold 0-2, 雨季Fold 2-3)，验证了季节外推能力。每个模型报告5折交叉验证的均值±标准差。
+
+### 6.3 对2026年预测的推理
+
+**Q1 (回归预测)**: 对2026年2/1, 2/10, 2/20三个日期进行NTU点预测。由于Q1的XGBoost/LGBM/RF是静态回归模型(不依赖时序结构)，只需对每个目标时刻构造L1-L5特征向量即可。**2026年数据中虽有12行/月，但仅取目标日期对应的行构造特征**——其余行不使用。如果目标日期的某些输入变量在12行中缺失，使用最近的已知值前向填充。
+
+**Q2 (时滞建模)**: Q2的TCN模型需要连续时序输入(32步=62h上下文窗口)。2026年的稀疏数据无法提供连续32步。**策略**: Q2仅在2025年数据上训练和验证。论文中报告2025年的时滞参数和RMSE/R²。若需要2026年的FILT.NTU预测值供Q3使用，有两种选择:
+- **(a) 保守策略**: 直接用Q2在2025年最接近2026年1月的时间段(2025年12月)上做滚动预测，外推至2026年1月
+- **(b) 偏置策略**: 用2026年1月的12个FILT.NTU实测值进行偏置校正(均值偏移补偿)，不做完整预测
+
+**Q3 (混合预测)**: 这是最关键的推理步骤。目标: 预测2026年2/1, 2/10, 2/20的7:00-19:00逐小时NTU。
+
+**Step 1 — 上下文窗口构造**: 对于每个目标日期(如2月1日)，需要过去48h的连续时序上下文。2026年2月仅有12行稀疏数据→**不能直接使用**。策略: 使用**2025年数据中具有类似工况特征的48h片段**作为替代上下文——通过最小化特征距离(month相似度+原水浊度水平+季节相位)找到2025年中的最佳匹配段。
+
+**Step 2 — 输入对齐**: 确定目标日期在2026年数据中的TIME值(7:00-19:00对应TIME=700-1900)，在2025年匹配段的对应时点提取所需输入特征。
+
+**Step 3 — 模型推理**: 将构造的上下文窗口送入已训练的源A(TCN→GRU)和源B(N-BEATS)，获得两源预测→构建元特征向量→RF元学习器推理→输出逐小时NTU预测值。
+
+**Step 4 — 缺失NTU标签处理**: 2026年2月数据中NTU列全为NaN(见数据探索结果)。这意味着**无法在2026年2月验证预测精度**。**处理**: ①在论文中只做预测(不做精度评估)；②用2026年1月和3月的NTU(如果存在)做可选的精度验证；③将2026年2月的预测结果标注为"模型推断"而非"模型验证"。
+
+```mermaid
+flowchart TD
+    TR["2025年4380行完整数据"] --> TS["TimeSeriesSplit(5折)<br/>训练+验证全部模型"]
+    TS --> M["已训练模型集合<br/>Q1/Q2/Q3"]
+    
+    T2026["2026年36行稀疏数据"] --> EXTRACT["提取目标时刻:<br/>2/1, 2/10, 2/20<br/>7:00-19:00"]
+    
+    M --> Q1_P["Q1回归预测<br/>构造L1-L5特征→预测"]
+    M --> Q3_P["Q3时序预测<br/>匹配2025相似48h上下文→预测"]
+    
+    Q1_P --> EXCEL["Q1/Q3预测值 → Excel"]
+    Q3_P --> EXCEL
+    
+    EXCEL --> NOTE["论文注释:<br/>2026年2月NTU标签缺失,<br/>预测值仅作为模型推断,<br/>不做精度评估"]
+```
+
+### 6.4 论文中的声明模板
+
+> "鉴于2026年测试数据集(附件2)仅包含三个月各12条稀疏记录——远少于2025年训练集的每2小时一条的连续监测频率——且2026年2月出厂浊度(NTU)标签全部缺失，本研究采用以下推理策略: 所有模型的训练、超参数选择与交叉验证均在2025年4380条完整数据上完成(5折时序交叉验证)；对2026年的预测通过构造匹配2025年相似工况的时序上下文实现。所有提交的2026年预测值均标注为'模型推断'而非'模型验证'。2026年1月和3月的NTU标签(如果存在)将用于可选的推断精度评估。"
+
+---
+
+## 7. 跨题依赖关系与统一Loss设计
 
 ### 6.1 全题依赖DAG
 
@@ -1064,3 +1190,4 @@ flowchart TD
 | 时间 | 变更 |
 |------|------|
 | 2026-07-23 22:30 | 初始创建: 完整数学推导(§1-§5) + 附录A-E |
+| 2026-07-23 23:00 | 补充三处缺口: §4.3.3 CSTR级数N的KS距离拟合, §4.3.4工况感知门控机制(42e-42i), §6 2025→2026推理策略(6.1-6.4含Mermaid) |

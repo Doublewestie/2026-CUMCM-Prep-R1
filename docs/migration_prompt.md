@@ -15,6 +15,7 @@
 
 ### 必读（决策历史）
 - `Code/docs/sums/sum_1_题目分析与建模方案.md` — 题目分析、模型选择、创新点
+- `Code/docs/sums/sum_2_F_RIDE数据质量审查与排除决策.md` — F/RIDE排除依据(六项独立证据)
 
 ### 必读（硬约束）
 - `Reference/docs/CONSTITUTION.md` — 全局参数、物理约束、测试纪律

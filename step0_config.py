@@ -126,7 +126,10 @@ XGB_PARAMS = {
     "random_state": 42, "verbosity": 0,
 }
 LGB_PARAMS = {
-    "n_estimators": 200, "max_depth": 6, "learning_rate": 0.05,
+    "n_estimators": 400, "max_depth": 5, "learning_rate": 0.01,
+    "num_leaves": 31, "min_child_samples": 10,
+    "subsample": 0.9, "colsample_bytree": 0.9,
+    "reg_alpha": 0.01, "reg_lambda": 0.01,
     "random_state": 42, "verbose": -1,
 }
 RF_PARAMS = {

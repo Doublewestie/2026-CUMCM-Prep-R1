@@ -1,8 +1,8 @@
 """
-step0_config.py — Q1 全局参数 + 命名约定
+step0_config.py — 全局参数 + 命名约定
 ===========================================
 用途：所有后续 step 共用此文件中的参数。
-优先只配置 Q1 所需参数，Q2/Q3/Q4 参数后续按需追加。
+2026-07-24 重构：Q1改为灰箱模型，删L3/L4/L5特征工程参数。
 """
 
 import numpy as np
@@ -107,19 +107,94 @@ MONTH_FROM_FILE = {
 }
 
 # ==============================
-# 特征工程参数
+# 泵编码 — 压缩模式
 # ==============================
-LAG_STEPS       = [1, 3, 6]          # L3 滞后步数
-WINDOW_SIZES    = [3, 6, 12]         # L4 滚动窗口
-L5_CANDIDATES   = [                  # L5 交互特征候选
-    "PI_load",                       # RW_NTU * RW_FLOW (污染物总通量)
-    "GAMMA_alum",                    # ALUM / RW_NTU   (混凝剂充足度)
-    "PSI_alum",                      # ALUM * RW_FLOW  (总矾投加速率)
-    "OMEGA_night",                   # is_night * ΔRW_NTU_clip+ (夜间突变)
-]
+PUMP_COMPRESS = True  # True→整数count(0-5), False→5维0/1展开
 
 # ==============================
-# Q1 模型超参
+# 特征工程参数（精简后，2026-07-24重构）
+# ==============================
+# L1保留的特征列（排除出厂同期泄露变量PH/CLR/CL2/TW_FLOW）
+FEATURE_COLS_L1 = [
+    "RIVER_LEVEL", "RW_FLOW", "RW_NTU", "RW_CLR", "RW_PH",
+    "FILT_NTU", "CW_WELL_LEVEL", "ALUM",
+]
+# 泵压缩后的列名
+PUMP_COLS = ["rw_pump_count", "tw_pump_count"]
+
+# ==============================
+# Q1 灰箱模型参数（2026-07-24新方案）
+# ==============================
+# 段1: FILT(t) = β1*FILT(t-1) + (1-β1)*RW_NTU(t)*[1-η(t)]
+#   η(t) = ALUM(t) / (ALUM(t) + K_m(t) + α*CLR(t))
+#   K_m(t) = K_m0 + K_m1*day_sin(t) + K_m2*day_cos(t)
+# 段2: NTU(t) = β2(t)*NTU(t-1) + (1-β2(t))*FILT(t)
+#   β2(t) = exp(-Δt/θ(t)), θ(t) = A*CW_WELL_LEVEL(t-1) / TW_FLOW(t-1+ε)
+
+GREYBOX_PARAM_INIT = {
+    "beta1":   0.85,    # 工艺链时间常数 (0,1)
+    "Km0":     0.05,    # 基础矾需量 >0
+    "Km1":     0.01,    # K_m季节正弦分量
+    "Km2":     0.01,    # K_m季节余弦分量
+    "alpha":   0.005,   # CLR竞争系数 >0
+    "A":       100.0,   # 清水池等效底面积 m²
+    "FILT0":   0.2,     # FILT递推初始值
+    "NTU0":    0.3,     # NTU递推初始值
+}
+
+GREYBOX_PARAM_BOUNDS = {
+    "beta1":  (0.01, 0.99),
+    "Km0":    (0.001, 0.5),
+    "Km1":    (-0.1, 0.1),
+    "Km2":    (-0.1, 0.1),
+    "alpha":  (0.0, 0.1),
+    "A":      (1.0, 1000.0),
+    "FILT0":  (0.001, 10.0),
+    "NTU0":   (0.001, 10.0),
+}
+
+# 损失权重
+GREYBOX_LAMBDA = {
+    "filter_upper": 0.5,   # λ₁: FILT ≤ RW_NTU
+    "nonneg":       0.1,   # λ₂: 浊度非负
+    "cstr_upper":   0.5,   # λ₃: NTU ≤ FILT
+    "km_pos":       0.01,  # λ₄: K_m保持正值
+}
+
+# 优化
+GREYBOX_N_RESTARTS = 8     # 多起点次数
+GREYBOX_MAX_ITER = 2000    # L-BFGS-B 最大迭代
+
+# 双模态阈值（Q2确定, 2026-07-24）
+THETA_COMFORT = 0.15
+
+# ==============================
+# 通用：TimeSeriesSplit
+# ==============================
+N_SPLITS = 5
+
+# ==============================
+# 2026 年目标预测日期
+# ==============================
+TARGET_DATES_2026 = ["2026-02-01", "2026-02-10", "2026-02-20"]
+
+# ==============================
+# 输出文件路径
+# ==============================
+OUT_CLEAN_DATA    = os.path.join(OUTPUT_DIR, "clean_data.csv")
+OUT_X_ALL         = os.path.join(OUTPUT_DIR, "X_all.npy")
+OUT_Y_ALL         = os.path.join(OUTPUT_DIR, "y_all.npy")
+OUT_FEATURE_NAMES = os.path.join(OUTPUT_DIR, "feature_names.npy")
+OUT_IMPUTE_REPORT = os.path.join(OUTPUT_DIR, "impute_report.json")
+
+# Q1 灰箱模型输出
+OUT_GREYBOX_PARAMS    = os.path.join(OUTPUT_DIR, "q1_greybox_params.json")
+OUT_GREYBOX_METRICS   = os.path.join(OUTPUT_DIR, "q1_greybox_metrics.csv")
+OUT_GREYBOX_PRED_FILT = os.path.join(OUTPUT_DIR, "q1_greybox_filt_pred.npy")
+OUT_GREYBOX_PRED_NTU  = os.path.join(OUTPUT_DIR, "q1_greybox_ntu_pred.npy")
+
+# ==============================
+# [LEGACY] 旧Q1/Q2代码向后兼容 — 2026-07-24后仅保留用于旧脚本
 # ==============================
 XGB_PARAMS = {
     "n_estimators": 200, "max_depth": 6, "learning_rate": 0.05,
@@ -136,35 +211,10 @@ RF_PARAMS = {
     "n_estimators": 100, "max_depth": 8,
     "random_state": 42, "n_jobs": -1,
 }
-
-# Huber Loss δ
 HUBER_DELTA = 1.0
-
-# SHAP 特征保留阈值
-SHAP_THRESHOLD = 0.005  # 特征保留阈值（几何平均后值域很小）
-
-# TimeSeriesSplit 折数
-N_SPLITS = 5
-
-# ==============================
-# GAM 参数（Q1.1 函数关系可视化用）
-# ==============================
-GAM_TOP_K = 5        # 取 SHAP 排名前 5 的特征做 GAM
-GAM_N_SPLINES = 10   # 每个变量的样条基函数数
-
-# ==============================
-# 输出文件路径
-# ==============================
-OUT_CLEAN_DATA    = os.path.join(OUTPUT_DIR, "clean_data.csv")
-OUT_FEATURES_ALL  = os.path.join(OUTPUT_DIR, "features_all.csv")
-OUT_X_ALL         = os.path.join(OUTPUT_DIR, "X_all.npy")
-OUT_Y_ALL         = os.path.join(OUTPUT_DIR, "y_all.npy")
-OUT_FEATURE_NAMES = os.path.join(OUTPUT_DIR, "feature_names.npy")
-OUT_LAMBDA_NTU    = os.path.join(OUTPUT_DIR, "lambda_ntu.pkl")
-OUT_BOXCOX_SCALER = os.path.join(OUTPUT_DIR, "boxcox_scaler.pkl")
-OUT_IMPUTE_REPORT = os.path.join(OUTPUT_DIR, "impute_report.json")
-
-# 2026 年目标预测日期
-TARGET_DATES_2026 = ["2026-02-01", "2026-02-10", "2026-02-20"]
+SHAP_THRESHOLD = 0.005
+GAM_TOP_K = 5
+GAM_N_SPLINES = 10
+OUT_LAMBDA_NTU = os.path.join(OUTPUT_DIR, "lambda_ntu.pkl")
 
 print(f"[step0_config] 配置加载完毕。输出目录: {OUTPUT_DIR}")

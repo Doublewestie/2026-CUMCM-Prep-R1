@@ -1,16 +1,8 @@
 """
-step2.2_baseline_comparison.py
-Q2 基准模型对比 — 传递函数 / AR(6) / ARMAX(6,4)
-======================================================
-输入: clean_data.csv, tau_params.json
-输出: q2_baseline_comparison.csv, figures/q2_baseline_bar.png
-
-基准模型:
-  1. 传递函数 (CCF + LinearRegression) — 5个参数
-  2. AR(6) — 纯自回归, 7个参数
-  3. ARMAX(6,4) — 自回归+外生变量, ~17个参数
-
-与TCN结果合并后输出深度学习 vs 基线的精度对比。
+step2.2_baseline_comparison.py — AR Baseline on Stress Zone
+=============================================================
+Re-run AR(6) and ARMAX(6,4) on stress zone subset (FILT >= 0.15)
+for fair comparison with Stress TCN.
 """
 
 import os, json
@@ -18,216 +10,105 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import TimeSeriesSplit
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+from step0_config import *
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-FIG_DIR = os.path.join(OUTPUT_DIR, "figures")
-os.makedirs(FIG_DIR, exist_ok=True)
-
-N_SPLITS = 5
-EPS = 1e-6
-INPUT_VARS = ["RW_NTU", "RW_FLOW", "RW_PH", "ALUM"]
-AUTOREG_LAGS = 6
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+THETA = 0.15
+AR_LAGS = 6
 
 
-def load_and_align(clean_csv, tau_params):
+def load_stress_data(clean_csv):
     df = pd.read_csv(clean_csv)
-    df = df.dropna(subset=["FILT_NTU"])
-    n = len(df)
+    df = df.dropna(subset=["FILT_NTU", "RW_FLOW", "ALUM", "RW_NTU"])
+    filt = df["FILT_NTU"].values.astype(np.float64)
+    rw_flow = df["RW_FLOW"].values.astype(np.float64)
+    alum = df["ALUM"].values.astype(np.float64)
+    rw_ntu = df["RW_NTU"].values.astype(np.float64)
 
-    y_raw = df["FILT_NTU"].values.astype(np.float64)
-    x_raw_all = {}
-    for v in INPUT_VARS:
-        x_raw_all[v] = df[v].values.astype(np.float64)
+    n = len(filt)
+    # Build lag features + Delta_FILT target (same as TCN)
+    X_all, y_all, mask = [], [], []
+    for t in range(AR_LAGS, n):
+        feats = []
+        feats.append(rw_flow[t - 1])    # shift-1
+        feats.append(alum[t - 1])
+        feats.append(rw_ntu[t - 1])
+        for lag in range(1, AR_LAGS + 1):
+            feats.append(filt[t - lag])
+        X_all.append(feats)
+        y_all.append(filt[t] - filt[t - 1])
+        mask.append(filt[t] >= THETA)
 
-    y_log = np.log1p(y_raw)
-    x_log_all = {v: np.log1p(x_raw_all[v]) for v in INPUT_VARS}
+    X_all = np.array(X_all, dtype=np.float64)
+    y_all = np.array(y_all, dtype=np.float64)
+    mask = np.array(mask, dtype=bool)
 
-    aligned = {}
-    for v in INPUT_VARS:
-        d_star = tau_params[v]["steps"]
-        x_shifted = np.roll(x_log_all[v], d_star)
-        x_shifted[:d_star] = np.nan
-        aligned[v] = x_shifted
-
-    return y_log, y_raw, aligned
-
-
-def build_features(y_log, aligned, ar_lags=AUTOREG_LAGS):
-    n = len(y_log)
-    feats = []
-    for v in INPUT_VARS:
-        feats.append(aligned[v])
-    for lag in range(1, ar_lags + 1):
-        y_ar = np.roll(y_log, lag)
-        y_ar[:lag] = np.nan
-        feats.append(y_ar)
-
-    X_full = np.column_stack(feats)
-    valid = ~np.any(np.isnan(X_full), axis=1) & ~np.isnan(y_log)
-    return X_full[valid], y_log[valid]
+    X_s, y_s = X_all[mask], y_all[mask]
+    return X_s, y_s
 
 
-def evaluate_model(X, y, model_cls, fit_kwargs=None):
+def evaluate(X, y, model_cls, fit_kwargs=None):
     tscv = TimeSeriesSplit(n_splits=N_SPLITS)
     rmses, r2s, maes = [], [], []
-    for tr_idx, vl_idx in tscv.split(X):
-        X_tr, y_tr = X[tr_idx], y[tr_idx]
-        X_vl, y_vl = X[vl_idx], y[vl_idx]
-        if len(tr_idx) < 10 or len(vl_idx) < 5:
-            continue
+    for tr, vl in tscv.split(X):
         model = model_cls()
         kw = fit_kwargs or {}
-        model.fit(X_tr, y_tr, **kw)
-        pred = model.predict(X_vl)
-        pred_real = np.expm1(pred)
-        y_real = np.expm1(y_vl)
-        rmse = np.sqrt(np.mean((pred_real - y_real) ** 2))
-        ss_res = np.sum((pred_real - y_real) ** 2)
-        ss_tot = np.sum((y_real - np.mean(y_real)) ** 2)
-        r2 = 1 - ss_res / (ss_tot + EPS)
-        mae = np.mean(np.abs(pred_real - y_real))
-        rmses.append(rmse)
-        r2s.append(r2)
-        maes.append(mae)
+        model.fit(X[tr], y[tr], **kw)
+        pred = model.predict(X[vl])
+        rmse = np.sqrt(np.mean((pred - y[vl]) ** 2))
+        r2 = 1 - np.sum((pred - y[vl])**2) / (np.sum((y[vl] - y[vl].mean())**2) + EPS)
+        maes.append(np.mean(np.abs(pred - y[vl])))
+        rmses.append(rmse); r2s.append(r2)
     return np.mean(rmses), np.mean(r2s), np.mean(maes)
 
 
-# ==============================
-# 模型 1: 传递函数 (CCF+LinearRegression)
-# ==============================
-class TransferFunction:
-    def __init__(self):
-        self.lr = LinearRegression()
-
-    def fit(self, X, y, **kwargs):
-        self.lr.fit(X, y)
-
-    def predict(self, X):
-        return self.lr.predict(X)
-
-
-# ==============================
-# 模型 2: AR(6) 自回归
-# ==============================
 class AR6:
-    def __init__(self):
-        self.coef_ = None
-        self.intercept_ = None
-
-    def fit(self, X, y, **kwargs):
-        ar_feats = X[:, -AUTOREG_LAGS:]
+    def fit(self, X, y, **kw):
+        ar_feats = X[:, 3:3+AR_LAGS]  # FILT lags
         X_ar = np.column_stack([np.ones(len(y)), ar_feats])
-        theta = np.linalg.lstsq(X_ar, y, rcond=None)[0]
-        self.intercept_ = theta[0]
-        self.coef_ = theta[1:]
+        th = np.linalg.lstsq(X_ar, y, rcond=None)[0]
+        self.intercept = th[0]; self.coef = th[1:]
 
     def predict(self, X):
-        ar_feats = X[:, -AUTOREG_LAGS:]
-        return self.intercept_ + ar_feats @ self.coef_
+        return self.intercept + X[:, 3:3+AR_LAGS] @ self.coef
 
 
-# ==============================
-# 模型 3: ARMAX(6,4) — 自回归 + 4个外生变量
-# ==============================
-class ARMAX64:
+class ARMAX:
     def __init__(self):
         self.lr = LinearRegression()
-
-    def fit(self, X, y, **kwargs):
+    def fit(self, X, y, **kw):
         self.lr.fit(X, y)
-
     def predict(self, X):
         return self.lr.predict(X)
 
 
-# ==============================
-# 主流程
-# ==============================
 def main():
     clean_csv = os.path.join(OUTPUT_DIR, "clean_data.csv")
-    tau_file = os.path.join(OUTPUT_DIR, "tau_params.json")
+    X, y = load_stress_data(clean_csv)
+    print(f"Stress zone samples: {len(y)}")
 
-    if not os.path.exists(tau_file):
-        print("[step2.2] tau_params.json 未找到，请先运行 step2.0")
-        return
+    # Also compute "naive" baseline: always predict 0 (Delta_FILT mean)
+    naive_rmse = np.sqrt(np.mean(y ** 2))
+    naive_r2 = 0.0
+    print(f"Naive (Delta=0): RMSE={naive_rmse:.4f}")
 
-    with open(tau_file, "r", encoding="utf-8") as f:
-        tau_params = json.load(f)
+    # AR(6)
+    rmse1, r21, mae1 = evaluate(X, y, AR6)
+    print(f"AR(6):            RMSE={rmse1:.4f} R2={r21:.4f}")
 
-    y_log, y_raw, aligned = load_and_align(clean_csv, tau_params)
-    X_full, y_full = build_features(y_log, aligned)
-    print(f"[step2.2] 有效样本: {len(X_full)}")
+    # ARMAX
+    rmse2, r22, mae2 = evaluate(X, y, ARMAX)
+    print(f"ARMAX:            RMSE={rmse2:.4f} R2={r22:.4f}")
 
-    results = []
-
-    # --- 传递函数 ---
-    print("\n[step2.2] 传递函数 (CCF + LR)...")
-    rmse, r2, mae = evaluate_model(X_full, y_full, TransferFunction)
-    results.append({
-        "模型": "传递函数(LR)", "RMSE": round(rmse, 4),
-        "R2": round(r2, 4), "MAE": round(mae, 4), "参数量": 11,
-    })
-    print(f"  RMSE={rmse:.4f} R2={r2:.4f} MAE={mae:.4f}")
-
-    # --- AR(6) ---
-    print("\n[step2.2] AR(6) 自回归...")
-    rmse, r2, mae = evaluate_model(X_full, y_full, AR6)
-    results.append({
-        "模型": "AR(6)", "RMSE": round(rmse, 4),
-        "R2": round(r2, 4), "MAE": round(mae, 4), "参数量": 7,
-    })
-    print(f"  RMSE={rmse:.4f} R2={r2:.4f} MAE={mae:.4f}")
-
-    # --- ARMAX(6,4) ---
-    print("\n[step2.2] ARMAX(6,4)...")
-    rmse, r2, mae = evaluate_model(X_full, y_full, ARMAX64)
-    results.append({
-        "模型": "ARMAX(6,4)", "RMSE": round(rmse, 4),
-        "R2": round(r2, 4), "MAE": round(mae, 4), "参数量": 17,
-    })
-    print(f"  RMSE={rmse:.4f} R2={r2:.4f} MAE={mae:.4f}")
-
-    # 保存
-    df = pd.DataFrame(results)
-    df.to_csv(os.path.join(OUTPUT_DIR, "q2_baseline_comparison.csv"),
-              index=False, encoding="utf-8-sig")
-    print("\n[step2.2] 基准对比表 → output/q2_baseline_comparison.csv")
-
-    # --- 精度对比总结 ---
-    print("\n[step2.2] MIC vs TE vs CCF(基准) 精度对比:")
-    print(f"  CCF+LR: RMSE={results[0]['RMSE']:.4f} R2={results[0]['R2']:.4f}")
-    print(f"  AR(6):   RMSE={results[1]['RMSE']:.4f} R2={results[1]['R2']:.4f}")
-    print(f"  ARMAX64: RMSE={results[2]['RMSE']:.4f} R2={results[2]['R2']:.4f}")
-    print("\n  (TCN精度见 step2.1 输出)")
-
-    # 柱状图
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    models = [r["模型"] for r in results]
-    rmses = [r["RMSE"] for r in results]
-    r2s = [r["R2"] for r in results]
-    params = [r["参数量"] for r in results]
-
-    axes[0].bar(models, rmses, color=["steelblue", "mediumseagreen", "darkorange"], alpha=0.85)
-    axes[0].set_ylabel("RMSE")
-    axes[0].set_title("基准模型 — RMSE")
-
-    axes[1].bar(models, r2s, color=["steelblue", "mediumseagreen", "darkorange"], alpha=0.85)
-    axes[1].set_ylabel("R²")
-    axes[1].set_title("基准模型 — R²")
-
-    for ax in axes:
-        ax.tick_params(axis="x", rotation=10)
-
-    plt.tight_layout()
-    fig.savefig(os.path.join(FIG_DIR, "q2_baseline_bar.png"), dpi=150)
-    plt.close()
-    print("[step2.2] figures/q2_baseline_bar.png 已保存")
-
-    print("\n[step2.2] 完成.")
+    # Save
+    results = [
+        {"model": "Naive(0)", "RMSE": naive_rmse, "R2": naive_r2, "MAE": 0},
+        {"model": "AR(6)", "RMSE": round(rmse1,4), "R2": round(r21,4), "MAE": round(mae1,4)},
+        {"model": "ARMAX", "RMSE": round(rmse2,4), "R2": round(r22,4), "MAE": round(mae2,4)},
+    ]
+    pd.DataFrame(results).to_csv(
+        os.path.join(OUTPUT_DIR, "q2_stress_baseline.csv"), index=False, encoding="utf-8-sig")
+    print("[DONE] q2_stress_baseline.csv")
 
 
 if __name__ == "__main__":

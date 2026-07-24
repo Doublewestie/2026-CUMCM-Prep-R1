@@ -202,4 +202,15 @@ OUT_TIER2_LOG_PARAMS = os.path.join(OUTPUT_DIR, "tier2_log_params.json")
 # 2026 年目标预测日期
 TARGET_DATES_2026 = ["2026-02-01", "2026-02-10", "2026-02-20"]
 
+# ==============================
+# 与队友代码的兼容常量 (step0_preprocess.py 依赖)
+# ==============================
+PUMP_COMPRESS = True
+FEATURE_COLS_L1 = [
+    "RIVER_LEVEL", "RW_FLOW", "RW_NTU", "RW_CLR", "RW_PH",
+    "FILT_NTU", "CW_WELL_LEVEL", "ALUM",
+]
+PUMP_COLS = ["rw_pump_count", "tw_pump_count"]
+THETA_COMFORT = 0.15
+
 print(f"[step0_config] 配置加载完毕。输出目录: {OUTPUT_DIR}")

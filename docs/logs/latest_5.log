@@ -1,0 +1,44 @@
+2026-07-25 Q1 阈值敏感性分析 + 旧输出清理 + 全链路复现
+
+13:00 Plan A: 清理 output/ 旧版灰箱文件
+  - 删除 segment1_* (6个), segment2_* (3个), q1_greybox_* (3个), q1_factor_analysis.json, q1_formula.txt
+  - 删除旧版 figures: q1_cstr_response.png, q1_greybox_pred_vs_actual.png, q1_greybox_variant_comparison.png
+  - 共清理 15 个文件，output/ 目录仅保留 Step2 产出和预处理文件
+
+13:15 Plan B: Step1 全链路复现
+  - step1.0: C1 Acc=0.69, C2 Acc=0.79, Overall=0.58, tier_params.json + tier_labels.npy 生成
+  - step1.1: T1=2143, JS=0.05 (vs 高斯 0.64), tier1_report.json 生成
+  - step1.2: T2=1311, Path B (log) RMSE=0.0289 优于 A (0.0363), tier2_comparison.json 生成
+  - step1.3: T3 扫参 13 组, best: gbdt+linear_rw+lam3=0.0, R2=0.643, tau1=4h
+  - step1.4: eta_coag Robust=0.3354, FILT_NTU_mean6=0.2417, tier3_factor_importance.csv 生成
+  - step1.5: 5 张图全部生成 (q1_tier_distribution, q1_t3_feature_importance, q1_cstr_pred_vs_actual, q1_t1_empirical_dist, q1_summary)
+  - run_q1_full: 汇总表输出正常, 三级分布 2143/1311/921
+  - 环境修正: step1.4 初次用 base python 缺 xgboost, 修正为 mathorcup 环境 python
+
+14:00 T1 阈值对比实验 (0.05 → 0.06)
+  - 修改 step0_config.py: TIER_THRESHOLDS[0] = 0.06
+  - 重跑全链路对比:
+    * T1 样本 +330 (2143→2473), T2 -330 (1311→981), T3 不变 (921)
+    * C1 Acc 提升 (0.69→0.72), Overall Acc 提升 (0.58→0.62)
+    * T1 JS 改善 (0.05→0.017), T2 RMSE 略优 (0.0289→0.0284)
+    * T3 R2 提升 (0.643→0.670) — 但 tau1 峰值从 4h 漂到 12h
+    * eta_coag=0.335 不变
+
+14:30 T1/T2 双阈值数据驱动分析
+  - FILT_NTU 在 <=0.10 范围内完全离散 (0.01 间隔), 传感器精度所致
+  - T1 阈值扫描 (0.03~0.10):
+    * 0.05 时 T2 的 FILT->NTU r=0.006 (完美解耦), T1/T2/T3 49/30/21% 比例均衡
+    * 0.06 时 T2 r=0.046 (信号开始渗入), T2 仅 22% 偏少
+    * 0.10 时 T2 r=0.158 (物理信号明显), T2 只剩 7%
+  - T2/T3 阈值扫描 (0.10~0.50), 固定 T1<=0.05:
+    * 0.15: T2 r=0.006 (邻域最低), T3 r=0.812, n=921 — 分隔最干净
+    * 0.14: T3 多 41 条边界弱信号, T3 mean NTU 从 0.796 降到 0.789
+    * 0.16+: T2 r 逐升至 0.032->0.047->0.068, 物理信号渗入过渡区
+  - 结论: 0.05 / 0.15 为全局最优, 配置回退
+
+15:00 配置回退 + 文档化
+  - step0_config.py 恢复 TIER_THRESHOLDS = [0.05, 0.15]
+  - 全链路重跑确认输出一致 (T1=2143, T2=1311, T3=921, eta_coag=0.335)
+  - 创建 latest_5.log (本文件)
+  - 创建 Reference/sums/sum_6_Q1阈值敏感性分析.md
+  - 更新 migration_prompt.md Step 2

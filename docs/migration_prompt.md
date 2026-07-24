@@ -29,12 +29,16 @@
 - `Code/Reference/sums/sum_3_Q1三级分层灰箱学习总结.md`
 - `Code/Reference/sums/sum_4_Q2双模阈值诊断学习总结.md`
 - `Code/Reference/sums/sum_5_Q3Q5方法论前瞻.md`
+- `Code/Reference/sums/sum_6_Q1阈值敏感性分析.md`
+- `Code/Reference/sums/sum_7_A线CSTR物理模型细化全历程.md` — **A线终点: 分tier A, R²=0.783**
+- `Code/Reference/sums/sum_8_B线负反馈控制回路探索全历程.md` — **B线终点: 负反馈存在但不可量化建模**
 - `Code/Reference/docs/CONSTITUTION.md`
 - `Code/Reference/docs/INDEX.md`
 
 ### 速读（了解近期动态）
+- `Code/docs/logs/latest_7.log` — B线负反馈探索全历程 (2026-07-25)
+- `Code/docs/logs/latest_6.log` — A线CSTR物理模型细化全历程 (2026-07-25)
 - `Code/docs/logs/latest_4.log` — Q1三级灰箱开发日志
-- `Code/docs/logs/latest_3.log` — Q2旧方案开发日志
 
 ### 必读（代码现状）
 - 运行 `python step1.4_feature_importance.py` 获取T3特征重要性
@@ -45,7 +49,7 @@
 ## Step 3: 恢复当前任务上下文
 
 ### 已完成（按Phase）
-- **Phase 1 (Q1)**: 三级分层灰箱方案已闭环。CSTR段2 NTU全量 R²=0.727。T3特征重要性: η_coag#1(0.335)。τ₁=4h softmax学习。
+- **Phase 1 (Q1)**: 三级分层灰箱 + A线物理细化已闭环。最终公式 (step1.7_final): 分tier CSTR, A={T1:400, T2:250, T3:30}, 全量 R²=**0.783**。T3特征重要性: η_coag#1(0.335)。阈值 [0.05, 0.15] 不可调。
 - **Phase 2 (Q2)**: 双模阈值诊断已闭环。CCF/MIC/TE三方法全部失效。AR(6) R²=0.52 > TCN R²=-0.15。
 - **Phase 3-5 (Q3/Q4/Q5)**: 代码骨架已创建，内容待实现。
 
@@ -63,8 +67,8 @@
 ## Step 4: 硬约束速查
 
 1. `Reference/` 位于 git 根目录内 (`Code/Reference/`), 随代码一同版本控制
-2. CSTR段2公式: NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t), β₂=exp(-2h/θ)
-3. 三级分区: T1(≤0.05, 经验采样), T2(0.05~0.15, 对数压缩), T3(>0.15, CSTR+反馈)
+2. CSTR段2公式 (分tier A, step1.7+): NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t), β₂=exp(-2h/θ), θ=A_tier·CW_WELL(t-1)/TW_FLOW(t-1), A_tier={400(T1), 250(T2), 30(T3)}
+3. 三级分区: T1(≤0.05, 经验采样), T2(0.05~0.15, 对数压缩), T3(>0.15, CSTR+反馈) — 不可调 (sum_6 验证)
 4. 物理约束只在违规出现时激活；否则用硬裁剪
 5. 全部模型在2025年数据上用TimeSeriesSplit验证, 2026年仅做最终预测
 6. 时滞参数不硬传给Q3——用注意力机制自适应学习

@@ -6,8 +6,8 @@ Output: output/figures/*.png
 import numpy as np, pandas as pd, os, json, warnings
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-plt.rcParams["font.family"] = "Microsoft YaHei"
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
+plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["axes.unicode_minus"] = False
 from q1_data_utils import load_clean_data, add_tier_labels
 from step0_config import *
@@ -80,7 +80,7 @@ for i, t_id in enumerate([1, 2, 3]):
     axes[i].set_xlabel("True NTU"); axes[i].set_ylabel("Predicted NTU")
     from sklearn.metrics import r2_score
     r2 = r2_score(ntu[mk], pred[mk])
-    axes[i].set_title(f"{names_tier[t_id]} (R²={r2:.3f}, n={mk.sum()})")
+    axes[i].set_title(f"{names_tier[t_id]} (R2={r2:.3f}, n={mk.sum()})")
 plt.tight_layout(); fig.savefig(os.path.join(FIG_DIR, "q1_cstr_pred_vs_actual.png"), dpi=200, bbox_inches="tight")
 plt.close(); print("[FIG] q1_cstr_pred_vs_actual.png")
 

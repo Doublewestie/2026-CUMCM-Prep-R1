@@ -388,13 +388,6 @@ def run_q2_ablation():
     _, _, aligned_te, x_rw_te = load_and_align(clean_csv, tau_te)
     X_te, Y_te, W_te, _ = build_sequences(y_log, aligned_te, x_rw_te)
 
-    # CCF
-    tau_ccf = copy.deepcopy(tau_full)
-    for v in INPUT_VARS:
-        tau_ccf[v]["steps"] = tau_full[v].get("ccf_best", tau_full[v]["steps"])
-    _, _, aligned_ccf, x_rw_ccf = load_and_align(clean_csv, tau_ccf)
-    X_ccf, Y_ccf, W_ccf, _ = build_sequences(y_log, aligned_ccf, x_rw_ccf)
-
     ablation_configs = [
         ("完整模型(TCN+物理Loss+注意力+TE+PINN)",
          Q2TCN, {"input_dim": input_dim, "use_attention": True},

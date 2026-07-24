@@ -1,8 +1,8 @@
 ## meta
-- status: planning
-- current_step: Step 1
-- current_task: 0
-- last_updated: 2026-07-23 21:45
+- status: executing
+- current_step: Step 2 (完成) → Step 3
+- current_task: 2.5
+- last_updated: 2026-07-24 14:35
 
 ---
 
@@ -41,11 +41,11 @@
 
 | # | 任务 | 优先级 | 依赖 | 产出 |
 |:---:|------|:---:|------|------|
-| 2.0 | MIC+传递熵时滞估计（R/W NTU, FLOW, ALUM=固定6h） | P0 | 0.5 | tau_params.json |
-| 2.1 | TCN(4层膨胀卷积) + 时滞注意力 + 物理EmbeddedLoss | P0 | 2.0 | tcn_model.pt |
-| 2.2 | AR(6) baseline 对比 | P1 | 0.5 | ar_baseline.csv |
-| 2.3 | 消融：移除物理Loss / TE→MI / TCN→AR / 移除注意力 | P1 | 2.1 | ablation_q2.csv |
-| 2.4 | RMSE/R²评估 + 时滞参数表 + 注意力热力图 | P0 | 2.1 | q2_metrics.csv, q2_figures/ |
+| 2.0 | MIC+传递熵时滞估计（R/W NTU, FLOW, ALUM=固定6h） | P0 | 0.5 | tau_params.json ✅ |
+| 2.1 | TCN(4层膨胀卷积) + 时滞注意力 + 物理EmbeddedLoss + PINN | P0 | 2.0 | tcn_model.pt ✅ |
+| 2.2 | 传递函数/AR(6)/ARMAX(6,4) baseline 对比 | P1 | 0.5 | q2_baseline_comparison.csv ✅ |
+| 2.3 | 消融：移除物理Loss / TE→MI / TCN→GRU / 移除注意力 / 无PINN / TE不分段 (迁至step5.0) | P1 | 2.1 | q2_ablation.csv ✅ |
+| 2.4 | RMSE/R²评估 + 时滞参数表 + 注意力热力图 | P0 | 2.1 | q2_metrics.csv, q2_figures/ ✅ |
 
 **DoD**：物理Loss效果验证(消融1 vs 完整)，时滞参数表，注意力热力图
 

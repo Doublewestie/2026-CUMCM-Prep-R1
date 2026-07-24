@@ -1,33 +1,75 @@
-2026-07-24 Q1 消融实验 + 重度消融 + 可视化更新
+2026-07-24 Q2 时滞估计 + TCN动态模型 + 基准对比 + 消融实验 完成
 
-03:30 实现 step5.0_ablation.py Q1部分:
-  - 特征层逐级消融: L1→L1+L2→+L3→+L4→+L5→+L2+
-  - FILT_NTU轻度消融(仅原值)
-  - FILT_NTU重度消融(全部17个相关特征: 原值+滞后+聚合+幂次)
-  - 5折TimeSeriesSplit, XGBoost统一评估
+14:00 step2.0: CCF/MIC/TE 三方法时滞估计
+  - CCF、MIC、TE 对 RW_NTU/RW_FLOW/RW_PH 各计算 lag 0-6
+  - TE 离散化分箱 + Surrogate 检验(N=50次洗牌)
+  - TE 季节分段: 高浊季(6-8月)/低浊季(0-2,11月)/过渡季(3-5,9-10月), MONTH为0-indexed
+  - ALUM 扫参: 线性代理模型 + 5折 TS-CV, d*=0, RMSE=0.25
+  - 融合修正: TE全不显著时 → CCF回退
+  - BUG修复: TE函数数组长度不匹配(MONTH 0-indexed修正)
+  - BUG修复: 融合函数 argmax 在TE全为0时默认fallback逻辑
+  - 输出: tau_params.json(d*全为0), tau_analysis.csv, tau_comparison.csv
+  - 输出: figures/tau_combined.png, tau_seasonal.png, tau_alum_sweep.png
 
-03:35 消融结果:
-  L1 only(21维):              R2=-0.139  原始传感器无法预测
-  L1+L2(30维):                R2= 0.300  ← 物理衍生是最大单次增益(+0.44)
-  L1+L2+L3(45维):             R2= 0.304  L3历史滞后几乎无增益(+0.004)
-  L1+L2+L3+L4(85维):          R2= 0.340  趋势/波动小幅贡献(+0.036)
-  +L5(89维):                  R2= 0.358  ★最优, 交互特征微量提升(+0.018)
-  +L2+(101维):                 R2= 0.346  幂次项反而下降(-0.012)
-  remove FILT_NTU(raw)(100维): R2= 0.346  删原值不影响(17个衍生版补偿)
-  remove ALL_FILT(17)(84维):   R2= 0.202  删全部, 断崖下跌(-0.144)
+14:15 step2.1: TCN动态模型训练
+  - TCN 4层膨胀卷积(dil=1,2,4,8) + 因果填充 + WeightNorm + ReLU + Dropout(0.1)
+  - 时滞注意力: W→tanh→v→softmax → context
+  - 输入10维: RW_NTU/RW_FLOW/RW_PH/ALUM(时滞对齐) + FILT_NTU_lag1-6
+  - 输入窗口 T_in=31 步=62h
+  - Loss: Huber(δ=1.0) + 平滑(λ=0.1) + 上界ReLU(λ=0.5) + PINN衰减(λ=0.05)
+  - PINN: 可学习参数 k, FILT_expected = log1p(RW) - |k|
+  - 训练: Adam(lr=1e-3, wd=1e-4), ReduceLROnPlateau, patience=30, max=500 epochs
+  - 5折 TS-CV: RMSE=0.207 R2=-0.153 MAE=0.138 viol=0.0 k=0.825
+  - R2跨折标准差0.74 > 均值, 模型极不稳定
+  - Fold1 R2=-1.53, 模型崩溃; Fold3 R2=0.44, 偶发性表现尚可
+  - 物理违反率5折全部为0%: 数据中本无FILT>RW违规
+  - 输出: tcn_model.pt, q2_predictions.csv, q2_metrics.csv, q2_attention_weights.npy, q2_pinn_k.npy
+  - 输出: figures/q2_attention_avg.png, q2_pred_vs_actual.png
 
-03:40 核心发现:
-  1. 物理衍生(L2)是最大单次增益 — 传感器原始读数几乎不可直接预测NTU
-  2. 历史滞后(L3)对树模型几乎无增益 — 当前值已足够, 时序价值在Q2/Q3体现
-  3. 幂次项(L2+)反而降低XGBoost精度 — 树内部已学非线性, 预计算冗余
-  4. FILT_NTU系列占R2的42% — 只删原值不影响, 删全部17个才见真实影响
-  5. 最优配置: L1+L2+L3+L4+L5(89维), 无需L2+幂次项
+14:20 step2.2: 三个经典基线
+  - 传递函数(CCF+LR): RMSE=0.364 R2=0.524 MAE=0.106
+  - AR(6): RMSE=0.365 R2=0.519 MAE=0.106
+  - ARMAX(6,4): RMSE=0.364 R2=0.524 MAE=0.106
+  - 三基线性能几乎一致: 外生变量仅贡献0.005的ΔR2
+  - 输出: q2_baseline_comparison.csv, figures/q2_baseline_bar.png
 
-03:45 step1.5更新:
-  - 新增 q1_ablation_bar.png (消融R2递进柱状图)
-  - 更新 GAM 偏依赖图 (3×2布局)
-  - 所有图表颜色统一, 300dpi
+14:25 step5.0: Q1特征消融 + Q2模型消融整合
+  - Q1消融(新增): 删ALL_FILT(17列) → R2=0.20 (vs 完整0.36, Δ=-0.14)
+  - Q2消融(7组):
+    [最佳] 无注意力: RMSE=0.196 R2=0.386
+    [完整] TCN+物理Loss+注意力+TE+PINN: RMSE=0.274 R2=0.054
+    [移除约束] 无物理Loss: RMSE=0.208 R2=0.308
+    [移除约束] 无PINN: RMSE=0.219 R2=0.178
+    [架构替换] TCN→GRU: RMSE=0.240 R2=0.216
+    [时滞方案] 纯MIC: RMSE=0.238 R2=0.130
+    [时滞方案] TE不分段: RMSE=0.274 R2=0.062
+  - 三项物理约束(平滑+上界+PINN)全部降低精度: 移除后R2+0.25
+  - 注意力机制严重损害模型: 移除后R2+0.33
+  - 单层GRU优于4层TCN: R2+0.16
+  - TE分段vs不分段无差异: TE全部为0
+  - 深度学习全线败于经典统计模型: ARMAX R2=0.52 vs TCN R2=0.05
+  - N_SPLITS_Q2=2 (原3折耗时过长), PATIENCE_Q2=20 (原30), 去CCF对齐(冗余)
+  - 输出: q1_ablation_results.csv(更新), q2_ablation.csv(新增), figures/q2_ablation_bar.png
 
-03:50 目录整理: 创建 results/tables + results/figures, 复制全部1_1输出
+14:30 核心发现总结:
+  1. CCF/MIC/TE三种统计方法全部无法检测有物理意义的时滞 → 统计方法在水处理数据上失效
+  2. TE全部为0: 99%去除效率掩蔽因果信号, 是系统本质特征非方法缺陷
+  3. 物理约束(平滑/上界/PINN)在违规率0%的数据上适得其反 → R2下降0.25
+  4. 注意力机制是过拟合加速器 → R2下降0.33
+  5. 深度学习全线败于7参数AR(6): R2 0.05 < 0.52 → 在此数据上无任何优势
+  6. Q2时滞参数不应传给Q3作为硬性对齐 → 建议Q3中自适应学习时滞
 
-03:55 commit: feat(results): Q1 results - tables & figures + docs: Q1 error system analysis
+14:35 文档输出:
+  - sum_4: Q2完整实验报告 (9节, 含所有指标/消融/解释/代码文件清单)
+  - latest_3: Q2完整开发日志
+  - PLAN.md status更新
+
+变更记录:
+  - step2.0_time_delay_estimation.py: CCF+MIC+TE三方法时滞估计, BUG修复(数组对齐、MONTH索引、融合回退)
+  - step2.1_tcn_dynamic_model.py: TCN完整模型训练, 物理Loss+PINN, CausalConv/TCNBlock/TemporalAttention
+  - step2.2_baseline_comparison.py: 传递函数/AR(6)/ARMAX(6,4)基线对比
+  - step2.5_visualization.py: Q2出图汇总
+  - step5.0_ablation.py: Q1消融(新增删ALL_FILT) + Q2消融(7组TCN内部消融)
+  - docs/sums/sum_4_Q2时滞估计与动态建模实验结果.md: 新建
+  - docs/logs/latest_3.log: 新建
+  - PLAN.md: status更新

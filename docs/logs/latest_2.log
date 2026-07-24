@@ -1,0 +1,53 @@
+2026-07-24 Q1 LGBM调参 + XGB/RF调参尝试 + 误差系统分析
+
+02:30 LGBM超参数优化(4组对照):
+  current(lr=0.05,无正则): RMSE=0.747 R2=-0.50
+  v2(lr=0.02,浅树):         RMSE=0.594 R2=0.045
+  v3(lr=0.03,极浅):         RMSE=0.606 R2=-0.003
+  v4(lr=0.01,全正则):       RMSE=0.559 R2=0.136 ★选定
+  v5(dart):                 RMSE=0.567 R2=0.135
+  最终: learning_rate 0.05→0.01, n_estimators 200→400, subsample 1.0→0.9,
+        colsample_bytree 1.0→0.9, reg_alpha 0→0.01, reg_lambda 0→0.01
+  step1.1重跑结果: LGBM R2=-0.01→0.27(+28pp), 集成R2=0.28→0.35(+7pp)
+
+02:45 XGBoost调参尝试(5组对照):
+  current: RMSE=0.437 R2=0.337 — 最优
+  xgb2~xgb5: 全部更差(RMSE 0.440~0.524)
+  结论: 默认参数已最优，不需调整
+
+02:50 RandomForest调参尝试(5组对照):
+  current: RMSE=0.442 R2=0.376 — 最优
+  rf2~rf5: 全部更差(RMSE 0.455~0.471)
+  结论: 默认参数已最优，不需调整
+
+03:00 误差系统分析(最后1折验证集, n=726):
+  FILT_NTU分层:
+    <0.15: RMSE=0.306 n=548 ← 正常工况
+    0.15-0.3: RMSE=0.145 n=57  ← 最佳预测区间
+    0.3-0.5:  RMSE=0.207 n=56
+    0.5-2.0:  RMSE=0.416 n=50  ← 误差开始扩大
+    >2.0:     RMSE=0.950 n=15  ← 滤池穿透，出厂NTU被清水池缓冲→模型严重高估
+  NTU真值区间:
+    <0.3:    MAE=0.066, pred_mean=0.246 vs true=0.194 → 高估27%
+    0.5-1.0: MAE=0.410, pred_mean=0.382 vs true=0.715 → 低估46%
+    1.0-3.0: MAE=0.625, pred_mean=0.699 vs true=1.279 → 低估45%
+  季节分层:
+    Spring:  RMSE=0.119 n=12  → 春季最准
+    Autumn:  RMSE=0.329 n=714 → 秋季样本最多，误差较大
+    Winter:  RMSE=0.143 n=133 → 冬季较准
+  TOP5最差预测:
+    true=0.51 pred=2.18 FILT=5.1  ← 清水池缓冲
+    true=0.84 pred=2.43 FILT=4.5  ← 清水池缓冲
+    true=1.74 pred=0.31 FILT=0.08 ← 滤后干净但出厂变差(管道/水池异常)
+    true=0.69 pred=2.10 FILT=2.2  ← 清水池缓冲
+    true=0.75 pred=2.15 FILT=6.5  ← 清水池缓冲
+  CV=0.61, R2=-0.20(最后一折单折)
+
+03:10 系统因素总结:
+  1. FILT_NTU仅解释49%方差(r=0.70)→51%来自不可观测变量
+  2. 清水池CSTR缓冲效应→FILT高NTU低时模型必然误判(Q2/Q3动机)
+  3. MSE偏差→高值区系统性低估40%+
+  4. NTU变异系数0.61→R2=0.34相当于解释了21%绝对变异性
+
+03:15 commit推送: perf(lgbm): tune LightGBM hyperparams to fix overfitting
+  已确认: XGBoost和RandomForest当前参数已达最优，无需调整

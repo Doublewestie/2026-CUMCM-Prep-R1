@@ -1,0 +1,95 @@
+2026-07-24 Q1+Q2 全面重构会话 — 从101维XGBoost到双模灰箱CSTR
+
+10:00 会话启动: 队长审查原方案缺陷
+  - Q1 101维特征R²=0.34, 2026预测含4行print未实现
+  - Q2 4层TCN全量数据R²=-0.15, 深度学习败于7参数AR(6)(R²=0.52)
+  - 决策: Q1+Q2全面重构, 不依赖原有思路
+
+10:30 Q1灰箱方案确立: 两段物理递推模型
+  - 段1: FILT(t)=β₁·FILT(t-1)+(1-β₁)·RW_NTU(t)·[1-η(ALUM)]
+  - 段2: NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t), β₂=exp(-2h/θ), θ=A·CW/TW
+  - 8参数: β₁, K_m₀, K_m₁, K_m₂, α, A, FILT₀, NTU₀
+
+11:00 特征工程精简: 101维→15维
+  - 泵编码: 10维0/1展开→2维整数count
+  - 删除: L2+幂次层(12维), L3滞后层(15维), L4聚合层(40维), L5交互层(4维)
+  - 删除出厂同期泄露变量(PH/CLR/CL2/TW_FLOW同期)
+  - step0_config: 删LAG_STEPS/WINDOW_SIZES/L5_CANDIDATES, 加PUMP_COMPRESS等
+
+11:15 段1灰箱校准结果:
+  - β₁→0.999, K_m₀→0.001(bound), α→0
+  - R²=-0.53, 全参数触底 → 诚实报告: 99%去除率掩蔽外部输入效应
+
+11:30 段2灰箱校准结果:
+  - A=25.7m², R²=0.35(全量), CV R²=-0.69(跨折正负震荡)
+  - 与XGBoost(R²=0.34)持平但仅2参数, 物理可解释
+
+12:00 队长发现: FILT_NTU阈值效应
+  - FILT>0.15时RW_FLOW→FILT的r从0.10→0.40(4倍)
+  - FILT>0.15时ALUM→FILT的r从0.05→0.35(7倍)
+  - 数据验证: 78%时间FILT稳定在<0.15, 22%尖峰暴露动力学
+
+12:30 skill加载: master-brain+brainstorming+scientific-brainstorming+hypothesis-generation+critical-thinking+consciousness-council
+
+13:00 多角色议会评议: 建议双模框架
+  - Empiricist: 子集上相关性暴增, 全量数据稀释信号
+  - Minimalist: 不需要新模型, 已有CSTR+R²=0.35够用
+  - Architect: Q2应揭示时滞结构而非预测FILT
+  - Contrarian: 因果方向未验证(RW_FLOW可能被操作员响应逆转)
+
+13:30 闭环分解方案设计: ALUM_policy→ε→灰箱段1
+  - 发现操作员策略R²=0.0067(线性不可表示)
+  - ε版本灰箱R²=-3062(完全失败) → 如实记录负面结果
+
+14:00 Q2双模态重构:
+  - step2.0: 阈值诊断(Jenks 0.70临界/0.15建模)
+  - step2.1: 应力区2层TCN, shift-1因果约束, ΔFILT目标
+  - 应力区ΔFILT预测失败(R²=-0.16), 但滞后权重物理合理:
+    RW_FLOW峰值6h, ALUM峰值8h, RW_NTU峰值10h
+  - step2.2: AR(6)在应力区R²=-0.01(同样失败)
+  - step2.3: 舒适区r(FILT,NTU)=0.03, 确认CSTR物理不适用
+
+15:00 Q1双模CSTR改进: V4_DualMode
+  - 舒适区: NTU=24h滚动均值 (不建模, 诚实认输)
+  - 应力区: NTU=β₂·NTU_t-1+(1-β₂)·FILT, A=40.0m²
+  - 全量R²=0.53(+0.18 vs V1), CV R²=+0.30(+0.99 vs V1)
+  - CV R²_std=0.50(-67% vs V1的1.52)
+  - Comfort_R²≈0.00(n=3412), Stress_R²=0.68(n=962)
+
+15:30 Q1+Q2全文件清单:
+  新文件: step1+.0~step1+.5(灰箱系列), step2.0(阈值), step2.1(stress_TCN),
+          step2.1+(闭环分解), step2.3(舒适区报告)
+  编辑: step0_config, step0_preprocess, step1+.2(V4), step1+.5(双模注释),
+        step2.2(应力区AR基线), step2.5(操作员策略图)
+  废弃: step2.0-_time_delay_estimation(py), step2.1-_tcn_dynamic_model(py)
+
+16:00 未完成:
+  - 2026年三天NTU预测(归Q3)
+  - step3.x(Q3双源RF元学习器)未启动
+  - step4.x(Q4风险评价)未启动
+  - step5.x(Q2消融更新/TimesFM基线)未更新
+  - Reference/docs/体系未初始化
+
+16:30 关键不足与问题(如实记录):
+  1. CSTR违规率57%: NTU_pred常超过FILT, 物理上CSTR不应增浊
+     → 需引入C_base(管壁释放基线浊度)或改善边界处理
+  2. 段1灰箱全参数触底: β₁→1, K_m→0, α→0 — 不是优化失败, 是物理真相
+     → 论文需论证"99%去除率使外部输入在2h尺度不可辨识"
+  3. 闭环分解失败: 操作员策略R²=0.0067
+     → 操作员的控制规律远非线性, OLS不足以提取有意义的ε
+  4. ΔFILT应力区无法预测: 所有模型R²≤0
+     → 2h间隔下滤池瞬态变化≈白噪声, 信噪比10:1
+  5. 舒适区NTU不可解释: r(FILT,NTU)=0.03
+     → 管壁生物膜脱落/采样误差主导, 当前数据无法区分
+  6. 跨折CV方差虽降但仍高: R²_std=0.50
+     → 时间分割位置对时序模型有系统性影响, 是数据特性非模型缺陷
+  7. Reference/docs/ 完全为空: CONSTITUTION.md和INDEX.md不存在
+  8. 泵编码降维有信息损失: 10维0/1→2维count假设泵同质
+
+变更记录:
+  - step0_config.py: LAG_STEPS/WINDOW_SIZES/L5_CANDIDATES删除, GREYBOX区块新增
+  - step0_preprocess.py: 泵编码改造, L2+/L3/L4/L5全删除, Box-Cox移除
+  - step1+.x 全新灰箱系列: segment1/segment2/joint/output
+  - step2.x 全新双模系列: diagnostic/stress_tcn/comfort_report/visualization
+  - step2.1+closed_loop_decompose.py: 闭环分解尝试
+  - step1+.2_greybox_joint.py: V4_DualMode加入对比

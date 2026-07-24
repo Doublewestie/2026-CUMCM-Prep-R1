@@ -147,9 +147,9 @@ def run_q1_ablation(X, y, feature_names):
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 T_IN = 31; HIDDEN_DIM = 64; TCN_LAYERS = 4; KERNEL_SIZE = 3
 DILATIONS = [1,2,4,8]; DROPOUT_Q2 = 0.1
-BATCH_SIZE = 128; MAX_EPOCHS = 500; LR_Q2 = 1e-3; WD = 1e-4; PATIENCE_Q2 = 30
+BATCH_SIZE = 128; MAX_EPOCHS = 500; LR_Q2 = 1e-3; WD = 1e-4; PATIENCE_Q2 = 20
 L_SMOOTH=0.1; L_UPPER=0.5; L_PINN=0.05; H_DELTA=1.0; EPP = 1e-6
-N_SPLITS_Q2 = 3
+N_SPLITS_Q2 = 2
 INPUT_VARS = ["RW_NTU","RW_FLOW","RW_PH","ALUM"]
 AUTOREG_LAGS = 6
 
@@ -417,9 +417,6 @@ def run_q2_ablation():
         ("时滞=TE不分段",
          Q2TCN, {"input_dim": input_dim, "use_attention": True},
          X_te, Y_te, W_te, True, True, True),
-        ("时滞=CCF",
-         Q2TCN, {"input_dim": input_dim, "use_attention": True},
-         X_ccf, Y_ccf, W_ccf, True, True, True),
     ]
 
     results = []

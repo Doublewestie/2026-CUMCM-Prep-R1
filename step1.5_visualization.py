@@ -64,7 +64,11 @@ except: print("[SKIP] q1_t3_feature_importance (no data)")
 pred = np.zeros_like(ntu); pred[0] = ntu[0]
 cw, tw = df["CW_WELL_LEVEL"].values, df["TW_FLOW"].values
 for t in range(1, len(ntu)):
-    th = 141.3 * cw[t-1] / max(tw[t-1], 1)
+    ft = filt[t]
+    if ft <= 0.05: A_tier = 400
+    elif ft <= 0.15: A_tier = 250
+    else: A_tier = 30
+    th = A_tier * cw[t-1] / max(tw[t-1], 1)
     b2 = np.exp(-2.0 / max(th, 0.1))
     pred[t] = b2 * ntu[t-1] + (1 - b2) * filt[t]
 
@@ -108,13 +112,14 @@ fig, ax = plt.subplots(figsize=(10, 4))
 ax.axis("off")
 summary_text = (
     "Q1 Three-Tier Greybox Scheme Summary\n"
-    "═══════════════════════════════════\n\n"
+    "=====================================\n\n"
     "Model: NTU(t) = b2 * NTU(t-1) + (1-b2) * FILT(t)\n"
-    "  b2 = exp(-2h / theta), theta = A * CW_WELL_LEVEL / TW_FLOW\n\n"
-    "Overall NTU R2 = 0.727 (vs original XGBoost 0.34)\n"
-    "  T1 (<=0.05, 49%): Empirical sampling, R2=0.86\n"
-    "  T2 (0.05~0.15, 30%): Log-compressed greybox, R2=0.76\n"
-    "  T3 (>0.15, 21%): CSTR+feedback, R2=0.67\n\n"
+    "  b2 = exp(-2h / theta), theta = A * CW_WELL_LEVEL / TW_FLOW\n"
+    "  A = {T1:400, T2:250, T3:30} (per-tier, step1.7_final)\n\n"
+    "Overall NTU R2 = 0.783 (vs baseline CSTR 0.727, XGBoost 0.34)\n"
+    "  T1 (<=0.05, 49%): Empirical sampling, A=400, R2=0.887\n"
+    "  T2 (0.05~0.15, 30%): Log-compressed greybox, A=250, R2=0.760\n"
+    "  T3 (>0.15, 21%): CSTR, A=30, R2=0.750\n\n"
     "T3 Key Factors:\n"
     "  1. eta_coag (0.335) - Removal efficiency\n"
     "  2. FILT_NTU_mean6 (0.242) - Recent filter trend\n"

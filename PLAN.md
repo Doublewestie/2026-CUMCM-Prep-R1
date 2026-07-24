@@ -1,8 +1,8 @@
 ## meta
 - status: executing
-- current_step: Stage 1 (三级灰箱完成) → Stage 2
-- current_task: Q1三级方案已完成
-- last_updated: 2026-07-24 15:30
+- current_step: Stage 1 (三级灰箱完成) → Stage 3
+- current_task: Q1已闭环(Q2已闭环), Q3准备启动
+- last_updated: 2026-07-24 23:00
 
 ---
 
@@ -57,17 +57,30 @@
 
 ---
 
-## Stage 2: Q2 FILT.NTU动态时滞建模
+## Stage 2: Q2 — 双模态阈值诊断 + 两区建模
+
+**【方法变更】** 原方案(4层TCN+注意力+物理Loss)已废弃。当前方案基于双模态阈值诊断。
+
+### 核心思路
+
+FILT_NTU以θ=0.15为界分为舒适区(78%)和应力区(22%)，分区建模。舒适区中所有输入-输出相关性≈0(信号被噪声淹没)，应力区中物理关系显现(FILT→NTU r=0.81)。
+
+### 关键发现
+
+- **CCF/MIC/TE三种统计时滞方法全部失效** — 99%+处理效率掩蔽因果信号
+- **AR(6) R²=0.52 > TCN R²=-0.15** — 7参数自回归碾压4层深度学习
+- **闭环分解失败** — 操作员策略R²=0.0067, 线性不可表示
+- **滞后权重**: RW_FLOW 6h, ALUM 8h, RW_NTU 10h (应力区TCN卷积核分析)
 
 | # | 任务 | 优先级 | 依赖 | 产出 | 状态 |
 |:---:|------|:---:|------|------|:---:|
-| 2.0 | MIC+传递熵时滞估计（R/W NTU, FLOW, ALUM=固定6h） | P0 | 0.5 | tau_params.json | ✅ |
-| 2.1 | TCN(4层膨胀卷积) + 时滞注意力 + 物理EmbeddedLoss + PINN | P0 | 2.0 | tcn_model.pt | ✅ |
-| 2.2 | 传递函数/AR(6)/ARMAX(6,4) baseline 对比 | P1 | 0.5 | q2_baseline_comparison.csv | ✅ |
-| 2.3 | 消融：移除物理Loss / TE→MI / TCN→GRU / 移除注意力 / 无PINN / TE不分段 | P1 | 2.1 | q2_ablation.csv | ✅ |
-| 2.4 | RMSE/R²评估 + 时滞参数表 + 注意力热力图 | P0 | 2.1 | q2_metrics.csv, q2_figures/ | ✅ |
+| 2.0 | 双模阈值检测: Jenks/CorrBreak/GMM三法交叉验证 | P0 | 0.5 | theta_params.json | ✅ |
+| 2.1 | 应力区小TCN + 滞后权重提取 | P0 | 2.0 | q2_lag_weights.json | ✅ |
+| 2.2 | 应力区AR(6)/ARMAX基线对比 | P0 | 0.5 | q2_stress_baseline.csv | ✅ |
+| 2.3 | 闭环分解: 操作员策略OLS分解(负面结果) | P1 | 2.0 | q2_operator_policy.json | ✅ |
+| 2.4 | 舒适区统计报告 | P1 | 2.0 | q2_comfort_report.json | ✅ |
 
-**DoD**：物理Loss效果验证(消融1 vs 完整)，时滞参数表，注意力热力图 ✅
+**DoD**：双模阈值确定(θ=0.15)，滞后权重提取完成，统计方法失效结论记录 ✅
 
 ---
 
@@ -147,9 +160,11 @@ Code/
 ├── step1.4_feature_importance.py    # [新建] Q1: T3特征重要性
 ├── q1_data_utils.py                 # [新建] Q1: 共享工具函数
 ├── run_q1_full.py                   # [新建] Q1: 汇总表
-├── step2.0_time_delay_estimation.py # [完成] Q2: MIC+TE时滞
-├── step2.1_tcn_dynamic_model.py     # [完成] Q2: TCN+物理Loss
-├── step2.2_baseline_comparison.py   # [完成] Q2: 基线对比
+├── step2.0_greybox_diagnostic.py     # [完成] Q2: 双模阈值检测
+├── step2.1_stress_tcn.py            # [完成] Q2: 应力区TCN
+├── step2.1+_closed_loop_decompose.py# [完成] Q2: 闭环分解
+├── step2.2_baseline_comparison.py   # [完成] Q2: 应力区基线
+├── step2.3_comfort_report.py        # [完成] Q2: 舒适区报告
 ├── step2.5_visualization.py         # [完成] Q2: 图表汇总
 ├── step5.0_ablation.py              # [完成] 消融实验
 ├── step5.1_timesfm_baseline.py      # [待实现] TimesFM基线
@@ -167,14 +182,16 @@ Code/
     ├── logs/latest_1.log            # [已完成] 数据清洗
     ├── logs/latest_2.log            # [已完成] 特征工程
     ├── logs/latest_3.log            # [已完成] Q2开发
-    ├── logs/latest_4.log            # [新建] Q1三级方案
+    ├── logs/latest_4.log            # [已完成] Q1三级方案
     ├── sums/sum_1_题目分析与建模方案.md  # [已完成]
     ├── sums/sum_2_F_RIDE审查.md        # [已完成]
     ├── sums/sum_3_Q1实验结果.md        # [已完成]
     ├── sums/sum_4_Q2时滞估计.md        # [已完成]
-    ├── sums/sum_5_Q1三级分层灰箱.md    # [新建]
+    ├── sums/sum_4b_灰箱重构+双模阈值.md # [已完成] 队友版
+    ├── sums/sum_5_Q1三级分层灰箱.md    # [已完成] 当前方案
     ├── specs/2026-07-23-architecture-design.md  # [已完成]
-    └── migration_prompt.md          # [待完成]
+    ├── specs/2026-07-24-Q1三级分层灰箱-design.md # [新建]
+    └── migration_prompt.md          # [已完成]
 ```
 
 ---
@@ -185,3 +202,4 @@ Code/
 |------|------|
 | 2026-07-23 21:45 | 初始创建：Stage 0-5任务分解，代码文件清单，执行DAG |
 | 2026-07-24 15:30 | Stage1全面重写: 新三级分层灰箱方案替代原XGBoost方案; 新增6个code文件+2个docs文件; PLAN.md状态更新 |
+| 2026-07-24 23:00 | Stage1/Stage2全面闭环; Plan文件清单更新; Reference/sums/学习记录补充; Q1架构spec创建 |

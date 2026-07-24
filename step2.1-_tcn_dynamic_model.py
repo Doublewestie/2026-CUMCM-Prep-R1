@@ -2,15 +2,16 @@
 step2.1_tcn_dynamic_model.py
 Q2 滤后水浊度动态时滞模型 — TCN + 时滞注意力 + 物理EmbeddedLoss + PINN正则
 ===================================================================================
-输入: clean_data.csv, tau_params.json
-输出: tcn_model.pt, q2_predictions.csv, q2_metrics.csv
-       q2_attention_weights.npy, q2_pinn_k.npy
-       figures/q2_loss_curve.png, figures/q2_attention_avg.png
+双模式:
+  --mode physical : 按 tau_params_physical.json 物理先验对齐输入
+  --mode adaptive : 将各变量的 lag 0-3 堆叠为特征, TCN 注意力自学习时滞
+  --mode both     : 先后跑两个模式并保存对比
 
-消融实验统一在 step5.0 中执行。
+用法:
+  python step2.1_tcn_dynamic_model.py --mode both
 """
 
-import os, json, sys
+import os, json, sys, argparse, copy
 import numpy as np
 import pandas as pd
 import torch
@@ -49,51 +50,67 @@ EPS = 1e-6
 
 INPUT_VARS = ["RW_NTU", "RW_FLOW", "RW_PH", "ALUM"]
 AUTOREG_LAGS = 6
+ADAPTIVE_LAGS = 4
 
 
 # ==============================
 # 数据加载与对齐
 # ==============================
-def load_and_align(clean_csv, tau_params):
-    df = pd.read_csv(clean_csv)
-    df = df.dropna(subset=["FILT_NTU"])
-    n = len(df)
-
+def load_raw(clean_csv):
+    df = pd.read_csv(clean_csv).dropna(subset=["FILT_NTU"])
     y_raw = df["FILT_NTU"].values.astype(np.float64)
-    x_raw_all = {}
-    for v in INPUT_VARS:
-        x_raw_all[v] = df[v].values.astype(np.float64)
-
+    x_raw = {v: df[v].values.astype(np.float64) for v in INPUT_VARS}
+    n = len(y_raw)
     y_log = np.log1p(y_raw)
-    x_log_all = {v: np.log1p(x_raw_all[v]) for v in INPUT_VARS}
+    x_log = {v: np.log1p(x_raw[v]) for v in INPUT_VARS}
+    x_rw_raw = x_raw["RW_NTU"].copy()
+    return y_log, y_raw, x_log, x_rw_raw
 
+
+def build_physical(y_log, x_log, x_rw_raw, tau_params):
+    """物理对齐模式: 各变量按 tau 平移后作为单维特征"""
     aligned = {}
     for v in INPUT_VARS:
         d_star = tau_params[v]["steps"]
-        x_shifted = np.roll(x_log_all[v], d_star)
+        x_shifted = np.roll(x_log[v], d_star)
         x_shifted[:d_star] = np.nan
         aligned[v] = x_shifted
 
-    x_rw_ntu_raw = np.roll(x_raw_all["RW_NTU"], tau_params["RW_NTU"]["steps"])
-    x_rw_ntu_raw[:tau_params["RW_NTU"]["steps"]] = np.nan
+    x_rw_aligned = np.roll(x_rw_raw, tau_params["RW_NTU"]["steps"])
+    x_rw_aligned[:tau_params["RW_NTU"]["steps"]] = np.nan
 
-    return y_log, y_raw, aligned, x_rw_ntu_raw
-
-
-def build_sequences(y_log, aligned, x_rw_ntu_raw, t_in=T_IN, ar_lags=AUTOREG_LAGS):
-    n = len(y_log)
     X_list = [aligned[v][:, None] for v in INPUT_VARS]
-    for lag in range(1, ar_lags + 1):
-        y_ar = np.roll(y_log, lag)
-        y_ar[:lag] = np.nan
+    for lag in range(1, AUTOREG_LAGS + 1):
+        y_ar = np.roll(y_log, lag); y_ar[:lag] = np.nan
         X_list.append(y_ar[:, None])
 
     X_full = np.column_stack(X_list)
-    input_dim = X_full.shape[1]
+    return _pack_sequences(X_full, y_log, x_rw_aligned), X_full.shape[1]
 
+
+def build_adaptive(y_log, x_log, x_rw_raw):
+    """自适应模式: 每个输入变量取 lag 0..3, 堆叠为多维特征, TCN自选"""
+    X_list = []
+    for v in INPUT_VARS:
+        for lag in range(ADAPTIVE_LAGS):
+            x_shifted = np.roll(x_log[v], lag)
+            x_shifted[:lag] = np.nan
+            X_list.append(x_shifted[:, None])
+
+    for lag in range(1, AUTOREG_LAGS + 1):
+        y_ar = np.roll(y_log, lag); y_ar[:lag] = np.nan
+        X_list.append(y_ar[:, None])
+
+    X_full = np.column_stack(X_list)
+    x_rw_aligned = x_rw_raw.copy()
+    return _pack_sequences(X_full, y_log, x_rw_aligned), X_full.shape[1]
+
+
+def _pack_sequences(X_full, y_log, x_rw_ntu_raw):
+    n = len(y_log)
     seqs_x, seqs_y, seqs_w = [], [], []
-    for t in range(t_in, n):
-        x_window = X_full[t - t_in:t]
+    for t in range(T_IN, n):
+        x_window = X_full[t - T_IN:t]
         y_target = y_log[t]
         w_upper = x_rw_ntu_raw[t]
         if np.any(np.isnan(x_window)) or np.isnan(y_target) or np.isnan(w_upper):
@@ -101,11 +118,9 @@ def build_sequences(y_log, aligned, x_rw_ntu_raw, t_in=T_IN, ar_lags=AUTOREG_LAG
         seqs_x.append(x_window)
         seqs_y.append(y_target)
         seqs_w.append(w_upper)
-
     return (np.stack(seqs_x).astype(np.float32),
             np.array(seqs_y, dtype=np.float32),
-            np.array(seqs_w, dtype=np.float32),
-            input_dim)
+            np.array(seqs_w, dtype=np.float32))
 
 
 # ==============================
@@ -132,9 +147,7 @@ class TCNBlock(nn.Module):
         self.downsample = nn.Conv1d(in_ch, out_ch, 1) if in_ch != out_ch else None
 
     def forward(self, x):
-        out = self.conv(x)
-        out = self.relu(out)
-        out = self.dropout(out)
+        out = self.conv(x); out = self.relu(out); out = self.dropout(out)
         res = x if self.downsample is None else self.downsample(x)
         return out + res
 
@@ -154,28 +167,16 @@ class TemporalAttention(nn.Module):
 
 
 class Q2Model(nn.Module):
-    def __init__(self, input_dim, hidden_dim=HIDDEN_DIM, layers=TCN_LAYERS,
-                 kernel_size=KERNEL_SIZE, dilations=DILATIONS, dropout=DROPOUT):
+    def __init__(self, input_dim, hidden_dim=HIDDEN_DIM):
         super().__init__()
         self.tcn_blocks = nn.ModuleList()
-        for i in range(layers):
+        for i in range(TCN_LAYERS):
             self.tcn_blocks.append(
                 TCNBlock(input_dim if i == 0 else hidden_dim, hidden_dim,
-                         kernel_size, dilations[i], dropout))
+                         KERNEL_SIZE, DILATIONS[i], DROPOUT))
         self.attention = TemporalAttention(hidden_dim)
         self.fc_out = nn.Linear(hidden_dim, 1)
         self.k_param = nn.Parameter(torch.tensor(0.5))
-        self._init_weights()
-
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv1d):
-                if not any(p is m for p in self.parameters() if hasattr(m, 'is_weight_norm')):
-                    continue
-            elif isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
         h = x.permute(0, 2, 1)
@@ -183,8 +184,7 @@ class Q2Model(nn.Module):
             h = block(h)
         h = h.permute(0, 2, 1)
         context, attn_weights = self.attention(h)
-        y_hat = self.fc_out(context)
-        return y_hat, attn_weights
+        return self.fc_out(context), attn_weights
 
 
 # ==============================
@@ -194,8 +194,7 @@ def huber_loss(y_pred, y_true, delta=HUBER_DELTA):
     diff = y_pred.squeeze() - y_true
     abs_diff = torch.abs(diff)
     mask = abs_diff <= delta
-    loss = torch.where(mask, 0.5 * diff ** 2, delta * (abs_diff - 0.5 * delta))
-    return loss.mean()
+    return torch.where(mask, 0.5 * diff ** 2, delta * (abs_diff - 0.5 * delta)).mean()
 
 
 def compute_loss(y_pred, y_true, x_rw_ntu_raw, k_param):
@@ -243,66 +242,46 @@ def evaluate(model, loader):
         preds.append(y_hat_s.cpu().numpy())
         trues.append(by.cpu().numpy())
         attns_list.append(attn_w.cpu().numpy())
-        y_real = np.expm1(y_hat_s.cpu().numpy())
-        x_raw = bw.cpu().numpy()
-        total_viol += np.sum(y_real > x_raw)
+        total_viol += np.sum(np.expm1(y_hat_s.cpu().numpy()) > bw.cpu().numpy())
     n = len(loader.dataset)
     rmse = np.sqrt(total_mse / n)
     mae = total_mae / n
-    y_all_pred = np.concatenate(preds)
-    y_all_true = np.concatenate(trues)
-    yp_r, yt_r = np.expm1(y_all_pred), np.expm1(y_all_true)
+    yp, yt = np.concatenate(preds), np.concatenate(trues)
+    yp_r, yt_r = np.expm1(yp), np.expm1(yt)
     ss_res = np.sum((yp_r - yt_r) ** 2)
     ss_tot = np.sum((yt_r - np.mean(yt_r)) ** 2)
     r2 = 1 - ss_res / (ss_tot + EPS)
-    viol_rate = total_viol / n
-    return rmse, r2, mae, viol_rate, attns_list, yp_r, yt_r
+    return rmse, r2, mae, total_viol / n, attns_list, yp_r, yt_r
 
 
-# ==============================
-# 主流程
-# ==============================
-def main():
-    clean_csv = os.path.join(OUTPUT_DIR, "clean_data.csv")
-    tau_file = os.path.join(OUTPUT_DIR, "tau_params.json")
-    if not os.path.exists(tau_file):
-        print("[step2.1] 请先运行 step2.0_time_delay_estimation.py")
-        sys.exit(1)
-
-    with open(tau_file, "r", encoding="utf-8") as f:
-        tau_full = json.load(f)
-
-    y_log, y_raw, aligned, x_rw_raw = load_and_align(clean_csv, tau_full)
-    X, Y, W, input_dim = build_sequences(y_log, aligned, x_rw_raw)
-    print(f"[step2.1] 序列数={len(X)} 输入维度={input_dim}")
-
-    # --- 训练 ---
+def train_model(X, Y, W, input_dim, mode_name):
+    print(f"\n  [{mode_name}] input_dim={input_dim} seqs={len(X)}", flush=True)
     tscv = TimeSeriesSplit(n_splits=N_SPLITS)
-    fold_metrics, all_fold_attns, all_fold_preds, all_fold_trues = [], [], [], []
-    best_model_state = None
-    best_overall_rmse = float("inf")
+    fold_metrics, all_attns, all_preds, all_trues = [], [], [], []
+    best_state = None
+    best_rmse = float("inf")
 
     for fold, (tr_idx, vl_idx) in enumerate(tscv.split(X)):
         X_tr, Y_tr, W_tr = X[tr_idx], Y[tr_idx], W[tr_idx]
         X_vl, Y_vl, W_vl = X[vl_idx], Y[vl_idx], W[vl_idx]
-        tr_loader = DataLoader(TensorDataset(
+        tr_ldr = DataLoader(TensorDataset(
             torch.FloatTensor(X_tr), torch.FloatTensor(Y_tr),
             torch.FloatTensor(W_tr)), batch_size=BATCH_SIZE, shuffle=False)
-        vl_loader = DataLoader(TensorDataset(
+        vl_ldr = DataLoader(TensorDataset(
             torch.FloatTensor(X_vl), torch.FloatTensor(Y_vl),
             torch.FloatTensor(W_vl)), batch_size=BATCH_SIZE, shuffle=False)
 
         model = Q2Model(input_dim).to(DEVICE)
-        optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.5)
+        opt = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+        sch = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=10, factor=0.5)
 
-        best_rmse, patience_cnt = float("inf"), 0
-        for epoch in range(MAX_EPOCHS):
-            train_loss = train_epoch(model, tr_loader, optimizer)
-            rmse_val, _, _, _, _, _, _ = evaluate(model, vl_loader)
-            scheduler.step(rmse_val)
-            if rmse_val < best_rmse:
-                best_rmse = rmse_val
+        best_fold_rmse, patience_cnt = float("inf"), 0
+        for _ in range(MAX_EPOCHS):
+            train_epoch(model, tr_ldr, opt)
+            rmse_v, _, _, _, _, _, _ = evaluate(model, vl_ldr)
+            sch.step(rmse_v)
+            if rmse_v < best_fold_rmse:
+                best_fold_rmse = rmse_v
                 best_fold_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
                 patience_cnt = 0
             else:
@@ -311,79 +290,131 @@ def main():
                 break
 
         model.load_state_dict(best_fold_state)
-        rmse_f, r2_f, mae_f, viol_f, attns_f, preds_f, trues_f = evaluate(model, vl_loader)
+        rmse_f, r2_f, mae_f, viol_f, attns_f, preds_f, trues_f = evaluate(model, vl_ldr)
         fold_metrics.append({"fold": fold, "rmse": rmse_f, "r2": r2_f, "mae": mae_f,
-                             "violation_rate": viol_f, "k_pinn": model.k_param.item()})
-        all_fold_attns.extend(attns_f)
-        all_fold_preds.append(preds_f)
-        all_fold_trues.append(trues_f)
-        if rmse_f < best_overall_rmse:
-            best_overall_rmse = rmse_f
-            best_model_state = best_fold_state
-        print(f"  Fold{fold}: RMSE={rmse_f:.4f} R2={r2_f:.4f} MAE={mae_f:.4f} "
-              f"viol={viol_f:.3f} k={model.k_param.item():.3f}")
+                             "violation_rate": viol_f, "k": model.k_param.item()})
+        all_attns.extend(attns_f)
+        all_preds.append(preds_f)
+        all_trues.append(trues_f)
+        if rmse_f < best_rmse:
+            best_rmse = rmse_f
+            best_state = best_fold_state
+        print(f"    Fold{fold}: RMSE={rmse_f:.4f} R2={r2_f:.4f} k={model.k_param.item():.3f}", flush=True)
 
-    # --- 保存模型 ---
-    best_model = Q2Model(input_dim)
-    best_model.load_state_dict(best_model_state)
-    torch.save(best_model.state_dict(), os.path.join(OUTPUT_DIR, "tcn_model.pt"))
-    np.save(os.path.join(OUTPUT_DIR, "q2_pinn_k.npy"),
-            np.array([m["k_pinn"] for m in fold_metrics]))
-    print("[step2.1] tcn_model.pt, q2_pinn_k.npy 已保存")
+    avg = {k: np.mean([f[k] for f in fold_metrics]) for k in ["rmse", "r2", "mae", "violation_rate"]}
+    avg["k_pinn"] = np.mean([f["k"] for f in fold_metrics])
+    avg["mode"] = mode_name
+    return avg, best_state, all_attns, np.concatenate(all_preds), np.concatenate(all_trues)
 
-    # --- 保存预测 ---
-    all_preds_cat = np.concatenate(all_fold_preds)
-    all_trues_cat = np.concatenate(all_fold_trues)
-    df_pred = pd.DataFrame({"pred_FILT_NTU": all_preds_cat, "true_FILT_NTU": all_trues_cat})
-    df_pred.to_csv(os.path.join(OUTPUT_DIR, "q2_predictions.csv"), index=False, encoding="utf-8-sig")
 
-    # --- 保存指标 ---
-    avg_metrics = {k: np.mean([f[k] for f in fold_metrics]) for k in
-                   ["rmse", "r2", "mae", "violation_rate"]}
-    avg_metrics["model"] = "TCN_full"
-    avg_metrics["k_pinn"] = np.mean([f["k_pinn"] for f in fold_metrics])
-    pd.DataFrame([avg_metrics]).to_csv(
-        os.path.join(OUTPUT_DIR, "q2_metrics.csv"), index=False, encoding="utf-8-sig")
-    print(f"\n[step2.1] Complete model: RMSE={avg_metrics['rmse']:.4f} R2={avg_metrics['r2']:.4f} "
-          f"MAE={avg_metrics['mae']:.4f} viol={avg_metrics['violation_rate']:.4f}")
+# ==============================
+# 主流程
+# ==============================
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["physical", "adaptive", "both"], default="both")
+    args = parser.parse_args()
 
-    # --- 注意力热力图 ---
-    if all_fold_attns:
-        avg_attn = np.mean(np.concatenate(all_fold_attns, axis=0), axis=0)
-        np.save(os.path.join(OUTPUT_DIR, "q2_attention_weights.npy"),
-                np.concatenate(all_fold_attns, axis=0))
+    clean_csv = os.path.join(OUTPUT_DIR, "clean_data.csv")
+    y_log, y_raw, x_log, x_rw_raw = load_raw(clean_csv)
 
-        fig, ax = plt.subplots(figsize=(12, 3))
-        lags_h = (np.arange(len(avg_attn))[::-1]) * 2
-        ax.bar(lags_h, avg_attn, color="steelblue", alpha=0.8)
-        for v in INPUT_VARS:
-            d_tag = tau_full[v]["steps"]
-            ax.axvline(x=d_tag * 2, color="red", linestyle="--", alpha=0.6,
-                       label=f"{v}={d_tag*2}h")
-        ax.set_xlabel("lag (h)")
-        ax.set_ylabel("平均注意力权重")
-        ax.set_title("时滞注意力 — 平均权重分布")
-        ax.legend(fontsize=7)
+    results = {}
+    states = {}
+
+    for run_mode in (["physical", "adaptive"] if args.mode == "both" else [args.mode]):
+        if run_mode == "physical":
+            tau_file = os.path.join(OUTPUT_DIR, "tau_params_physical.json")
+            if not os.path.exists(tau_file):
+                print("[step2.1] tau_params_physical.json not found, skip physical mode")
+                continue
+            with open(tau_file, encoding="utf-8") as f:
+                tau = json.load(f)
+            print(f"\n[step2.1] ==== 物理先验对齐模式 ====", flush=True)
+            (X, Y, W), in_dim = build_physical(y_log, x_log, x_rw_raw, tau)
+            mode_label = "physical_prior"
+        else:
+            print(f"\n[step2.1] ==== 自适应时滞模式 ====", flush=True)
+            (X, Y, W), in_dim = build_adaptive(y_log, x_log, x_rw_raw)
+            mode_label = "adaptive_delay"
+
+        avg, state, attns, preds, trues = train_model(X, Y, W, in_dim, mode_label)
+        results[mode_label] = avg
+        states[mode_label] = state
+
+        torch.save(state, os.path.join(OUTPUT_DIR, f"tcn_model_{mode_label}.pt"))
+        pd.DataFrame({"pred_FILT_NTU": preds, "true_FILT_NTU": trues}).to_csv(
+            os.path.join(OUTPUT_DIR, f"q2_predictions_{mode_label}.csv"), index=False)
+
+        if attns:
+            all_a = np.concatenate([a for a in attns if a.size > 0], axis=0) if attns else np.array([])
+            if all_a.size > 0:
+                avg_attn = np.mean(all_a, axis=0)
+                np.save(os.path.join(OUTPUT_DIR, f"q2_attention_{mode_label}.npy"), all_a)
+                fig, ax = plt.subplots(figsize=(12, 3))
+                lags_h = (np.arange(len(avg_attn))[::-1]) * 2
+                ax.bar(lags_h, avg_attn, color="steelblue", alpha=0.8)
+                ax.set_xlabel("lag (h)"); ax.set_ylabel("avg attention")
+                ax.set_title(f"Attention — {mode_label}")
+                plt.tight_layout()
+                fig.savefig(os.path.join(FIG_DIR, f"q2_attention_{mode_label}.png"), dpi=150)
+                plt.close()
+
+    # ==============================
+    # 对比输出
+    # ==============================
+    if len(results) == 2:
+        print(f"\n{'='*65}")
+        print(f"  物理先验 vs 自适应时滞 对比")
+        print(f"{'='*65}")
+        r_phys = results["physical_prior"]
+        r_adap = results["adaptive_delay"]
+        print(f"  {'Metric':<15s} {'物理先验对齐':>15s} {'自适应时滞':>15s} {'Delta':>15s}")
+        print(f"  {'-'*60}")
+        for k in ["rmse", "r2", "mae"]:
+            d = r_adap[k] - r_phys[k] if k != "r2" else r_adap[k] - r_phys[k]
+            sign = "+" if k == "r2" else "+"
+            print(f"  {k.upper():<15s} {r_phys[k]:>15.4f} {r_adap[k]:>15.4f} {d:>+15.4f}")
+        print(f"  {'违规率':<15s} {r_phys['violation_rate']:>15.4f} {r_adap['violation_rate']:>15.4f}")
+        print(f"  {'k_PINN':<15s} {r_phys['k_pinn']:>15.4f} {r_adap['k_pinn']:>15.4f}")
+
+        better = "物理先验" if r_phys["r2"] > r_adap["r2"] else "自适应时滞"
+        print(f"\n  结论: {better}模式 R2 更高, 物理先验R2={r_phys['r2']:.4f} vs 自适应R2={r_adap['r2']:.4f}")
+
+        # 保存对比表
+        df_cmp = pd.DataFrame([
+            {"模式": "物理先验对齐", "RMSE": r_phys["rmse"], "R2": r_phys["r2"],
+             "MAE": r_phys["mae"], "viol_rate": r_phys["violation_rate"],
+             "k_pinn": r_phys["k_pinn"], "input_dim": 10},
+            {"模式": "自适应时滞", "RMSE": r_adap["rmse"], "R2": r_adap["r2"],
+             "MAE": r_adap["mae"], "viol_rate": r_adap["violation_rate"],
+             "k_pinn": r_adap["k_pinn"], "input_dim": 22},
+        ])
+        df_cmp.to_csv(os.path.join(OUTPUT_DIR, "q2_mode_comparison.csv"), index=False, encoding="utf-8-sig")
+
+        # 柱状图
+        fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+        colors = ["darkorange", "steelblue"]
+        modes = ["物理先验对齐", "自适应时滞"]
+        axes[0].bar(modes, [r_phys["rmse"], r_adap["rmse"]], color=colors, alpha=0.85)
+        axes[0].set_ylabel("RMSE"); axes[0].set_title("RMSE")
+        axes[1].bar(modes, [r_phys["r2"], r_adap["r2"]], color=colors, alpha=0.85)
+        axes[1].set_ylabel("R2"); axes[1].set_title("R2")
         plt.tight_layout()
-        fig.savefig(os.path.join(FIG_DIR, "q2_attention_avg.png"), dpi=150)
+        fig.savefig(os.path.join(FIG_DIR, "q2_mode_comparison.png"), dpi=150)
         plt.close()
-        print("[step2.1] figures/q2_attention_avg.png 已保存")
+        print("[step2.1] figures/q2_mode_comparison.png saved")
 
-    # --- 预测vs实际 ---
-    fig, ax = plt.subplots(figsize=(7, 7))
-    ax.scatter(all_trues_cat, all_preds_cat, alpha=0.4, s=6, c="steelblue")
-    lim_min = min(all_trues_cat.min(), all_preds_cat.min())
-    lim_max = max(all_trues_cat.max(), all_preds_cat.max())
-    ax.plot([lim_min, lim_max], [lim_min, lim_max], "r--", linewidth=1)
-    ax.set_xlabel("真实 FILT.NTU")
-    ax.set_ylabel("预测 FILT.NTU")
-    ax.set_title(f"TCN 预测 vs 实际 (RMSE={avg_metrics['rmse']:.4f}, R²={avg_metrics['r2']:.4f})")
-    plt.tight_layout()
-    fig.savefig(os.path.join(FIG_DIR, "q2_pred_vs_actual.png"), dpi=150)
-    plt.close()
-    print("[step2.1] figures/q2_pred_vs_actual.png 已保存")
+    elif len(results) == 1:
+        mode = list(results.keys())[0]
+        avg = results[mode]
+        print(f"\n[step2.1] {mode}: RMSE={avg['rmse']:.4f} R2={avg['r2']:.4f} MAE={avg['mae']:.4f}")
 
-    print("\n[step2.1] 完成.")
+        df_m = pd.DataFrame([{"model": mode, "rmse": avg["rmse"], "r2": avg["r2"],
+                              "mae": avg["mae"], "violation_rate": avg["violation_rate"],
+                              "k_pinn": avg["k_pinn"]}])
+        df_m.to_csv(os.path.join(OUTPUT_DIR, "q2_metrics.csv"), index=False, encoding="utf-8-sig")
+
+    print("\n[step2.1] Done.")
 
 
 if __name__ == "__main__":

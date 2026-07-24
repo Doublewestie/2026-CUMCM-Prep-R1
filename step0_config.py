@@ -1,8 +1,8 @@
 """
-step0_config.py — 全局参数 + 命名约定
+step0_config.py — Q1 全局参数 + 命名约定
 ===========================================
 用途：所有后续 step 共用此文件中的参数。
-2026-07-24 重构：Q1改为灰箱模型，删L3/L4/L5特征工程参数。
+优先只配置 Q1 所需参数，Q2/Q3/Q4 参数后续按需追加。
 """
 
 import numpy as np
@@ -107,23 +107,13 @@ MONTH_FROM_FILE = {
 }
 
 # ==============================
-# 泵编码 — 压缩模式
+# 特征工程参数
 # ==============================
-PUMP_COMPRESS = True  # True→整数count(0-5), False→5维0/1展开
+LAG_STEPS       = [1, 3, 6]          # L3 滞后步数
+WINDOW_SIZES    = [3, 6, 12]         # L4 滚动窗口
 
 # ==============================
-# 特征工程参数（精简后，2026-07-24重构）
-# ==============================
-# L1保留的特征列（排除出厂同期泄露变量PH/CLR/CL2/TW_FLOW）
-FEATURE_COLS_L1 = [
-    "RIVER_LEVEL", "RW_FLOW", "RW_NTU", "RW_CLR", "RW_PH",
-    "FILT_NTU", "CW_WELL_LEVEL", "ALUM",
-]
-# 泵压缩后的列名
-PUMP_COLS = ["rw_pump_count", "tw_pump_count"]
-
-# ==============================
-# Q1 灰箱模型参数（2026-07-24新方案）
+# Q1 灰箱模型参数（三等级方案）
 # ==============================
 # 段1: FILT(t) = β1*FILT(t-1) + (1-β1)*RW_NTU(t)*[1-η(t)]
 #   η(t) = ALUM(t) / (ALUM(t) + K_m(t) + α*CLR(t))
@@ -133,7 +123,7 @@ PUMP_COLS = ["rw_pump_count", "tw_pump_count"]
 
 GREYBOX_PARAM_INIT = {
     "beta1":   0.85,    # 工艺链时间常数 (0,1)
-    "Km0":     0.05,    # 基础矾需量 >0
+    "Km0":     0.05,    # 基础矾需求量 >0
     "Km1":     0.01,    # K_m季节正弦分量
     "Km2":     0.01,    # K_m季节余弦分量
     "alpha":   0.005,   # CLR竞争系数 >0
@@ -141,80 +131,75 @@ GREYBOX_PARAM_INIT = {
     "FILT0":   0.2,     # FILT递推初始值
     "NTU0":    0.3,     # NTU递推初始值
 }
-
 GREYBOX_PARAM_BOUNDS = {
-    "beta1":  (0.01, 0.99),
-    "Km0":    (0.001, 0.5),
-    "Km1":    (-0.1, 0.1),
-    "Km2":    (-0.1, 0.1),
-    "alpha":  (0.0, 0.1),
-    "A":      (1.0, 1000.0),
-    "FILT0":  (0.001, 10.0),
-    "NTU0":   (0.001, 10.0),
+    "beta1":  (0.01, 0.99),  "Km0":    (0.001, 0.5),
+    "Km1":    (-0.1, 0.1),   "Km2":    (-0.1, 0.1),
+    "alpha":  (0.0, 0.1),    "A":      (1.0, 1000.0),
+    "FILT0":  (0.001, 10.0), "NTU0":   (0.001, 10.0),
 }
-
-# 损失权重
 GREYBOX_LAMBDA = {
-    "filter_upper": 0.5,   # λ₁: FILT ≤ RW_NTU
-    "nonneg":       0.1,   # λ₂: 浊度非负
-    "cstr_upper":   0.5,   # λ₃: NTU ≤ FILT
-    "km_pos":       0.01,  # λ₄: K_m保持正值
+    "filter_upper": 0.5, "nonneg": 0.1, "cstr_upper": 0.5, "km_pos": 0.01,
 }
-
-# 优化
-GREYBOX_N_RESTARTS = 8     # 多起点次数
-GREYBOX_MAX_ITER = 2000    # L-BFGS-B 最大迭代
-
-# 双模态阈值（Q2确定, 2026-07-24）
-THETA_COMFORT = 0.15
+GREYBOX_N_RESTARTS = 8
+GREYBOX_MAX_ITER = 2000
 
 # ==============================
-# 通用：TimeSeriesSplit
+# 三等级Q1方案参数
 # ==============================
+# Tier 1: FILT <= 0.05  — 噪声域, 经验频率采样
+# Tier 2: 0.05 < FILT <= 0.15 — 过渡区, 双路径对比
+# Tier 3: FILT > 0.15   — 应力区, 灰箱CSTR + 负反馈
+
+TIER_THRESHOLDS = [0.05, 0.15]
+
+# T1: 经验频率采样
+TIER1_N_SAMPLES = 10000  # 经验分布采样次数
+
+# T2: 对数压缩 (路径B)
+TIER2_LOG_K_INIT = 0.08   # 线性缩放系数初始值
+TIER2_LOG_A_INIT = 5.0    # 压缩硬度初始值
+
+# T3: 负反馈相关参数
+TIER3_FB_TYPES = ["none", "linear", "gbdt"]
+TIER3_GAMMA_TYPES = ["fixed", "linear_rw", "sigmoid"]
+TIER3_LAMBDA3_VALUES = [0.0, 0.01, 0.05, 0.1, 0.5]
+TIER3_TAU_MAX_LAG = 6     # τ1 可学习最大lag
+
+# TimeSeriesSplit 折数
 N_SPLITS = 5
-
-# ==============================
-# 2026 年目标预测日期
-# ==============================
-TARGET_DATES_2026 = ["2026-02-01", "2026-02-10", "2026-02-20"]
 
 # ==============================
 # 输出文件路径
 # ==============================
 OUT_CLEAN_DATA    = os.path.join(OUTPUT_DIR, "clean_data.csv")
+OUT_FEATURES_ALL  = os.path.join(OUTPUT_DIR, "features_all.csv")
 OUT_X_ALL         = os.path.join(OUTPUT_DIR, "X_all.npy")
 OUT_Y_ALL         = os.path.join(OUTPUT_DIR, "y_all.npy")
 OUT_FEATURE_NAMES = os.path.join(OUTPUT_DIR, "feature_names.npy")
+OUT_LAMBDA_NTU    = os.path.join(OUTPUT_DIR, "lambda_ntu.pkl")
+OUT_BOXCOX_SCALER = os.path.join(OUTPUT_DIR, "boxcox_scaler.pkl")
 OUT_IMPUTE_REPORT = os.path.join(OUTPUT_DIR, "impute_report.json")
 
-# Q1 灰箱模型输出
+# 灰箱模型输出
 OUT_GREYBOX_PARAMS    = os.path.join(OUTPUT_DIR, "q1_greybox_params.json")
 OUT_GREYBOX_METRICS   = os.path.join(OUTPUT_DIR, "q1_greybox_metrics.csv")
 OUT_GREYBOX_PRED_FILT = os.path.join(OUTPUT_DIR, "q1_greybox_filt_pred.npy")
 OUT_GREYBOX_PRED_NTU  = os.path.join(OUTPUT_DIR, "q1_greybox_ntu_pred.npy")
 
-# ==============================
-# [LEGACY] 旧Q1/Q2代码向后兼容 — 2026-07-24后仅保留用于旧脚本
-# ==============================
-XGB_PARAMS = {
-    "n_estimators": 200, "max_depth": 6, "learning_rate": 0.05,
-    "random_state": 42, "verbosity": 0,
-}
-LGB_PARAMS = {
-    "n_estimators": 400, "max_depth": 5, "learning_rate": 0.01,
-    "num_leaves": 31, "min_child_samples": 10,
-    "subsample": 0.9, "colsample_bytree": 0.9,
-    "reg_alpha": 0.01, "reg_lambda": 0.01,
-    "random_state": 42, "verbose": -1,
-}
-RF_PARAMS = {
-    "n_estimators": 100, "max_depth": 8,
-    "random_state": 42, "n_jobs": -1,
-}
-HUBER_DELTA = 1.0
-SHAP_THRESHOLD = 0.005
-GAM_TOP_K = 5
-GAM_N_SPLINES = 10
-OUT_LAMBDA_NTU = os.path.join(OUTPUT_DIR, "lambda_ntu.pkl")
+# 三等级方案输出
+OUT_TIER_MODEL       = os.path.join(OUTPUT_DIR, "tier_classifier.pkl")
+OUT_TIER_PARAMS      = os.path.join(OUTPUT_DIR, "tier_params.json")
+OUT_TIER_METRICS     = os.path.join(OUTPUT_DIR, "tier_metrics.csv")
+OUT_TIER_FACTOR      = os.path.join(OUTPUT_DIR, "tier3_factor_importance.csv")
+OUT_TIER_LABELS      = os.path.join(OUTPUT_DIR, "tier_labels.npy")
+OUT_TIER1_REPORT     = os.path.join(OUTPUT_DIR, "tier1_report.json")
+OUT_TIER2_REPORT     = os.path.join(OUTPUT_DIR, "tier2_comparison.json")
+OUT_TIER3_SWEEP      = os.path.join(OUTPUT_DIR, "tier3_sweep_results.csv")
+OUT_TIER3_BEST       = os.path.join(OUTPUT_DIR, "tier3_best_params.json")
+OUT_TIER3_PRED       = os.path.join(OUTPUT_DIR, "tier3_predictions.npy")
+OUT_TIER2_LOG_PARAMS = os.path.join(OUTPUT_DIR, "tier2_log_params.json")
+
+# 2026 年目标预测日期
+TARGET_DATES_2026 = ["2026-02-01", "2026-02-10", "2026-02-20"]
 
 print(f"[step0_config] 配置加载完毕。输出目录: {OUTPUT_DIR}")

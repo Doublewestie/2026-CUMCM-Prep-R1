@@ -1,0 +1,5 @@
+﻿feature,index,physics_pass,shap_main_effect,shap_avg_interaction,interaction_pass,final_verdict
+PI_load,97,True,0.001154,2.4e-05,False,删除
+GAMMA_alum,98,True,0.0,0.0,False,删除
+PSI_alum,99,True,0.006029,0.000116,False,删除
+OMEGA_night,100,True,2.3e-05,0.0,False,删除

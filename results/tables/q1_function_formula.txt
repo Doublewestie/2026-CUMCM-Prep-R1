@@ -1,0 +1,22 @@
+Q1.1 Explicit Function (Ridge Regression in log1p space)
+==========================================================
+
+log(1 + NTU) = 1.4070
+  - 0.2867 * CLR
+  - 0.2619 * eta
+  + 0.2552 * (-ln eta)
+  + 0.1491 * FILT_NTU
+  + 0.1294 * FILT_NTU_mean3
+  - 0.0576 * CW_WELL_LEVEL_std12
+  - 0.0485 * CW_WELL_LEVEL
+  - 0.0465 * FILT_NTU_std12
+
+R2 (full data fit) = 0.6993
+
+=== Inverse transform: NTU = exp(formula) - 1 ===
+
+Note: This is a PHYSICS-INSPIRED polynomial approximation.
+  - FILT_NTU^2 : filter breakthrough nonlinearity (NTU rises faster at high turbidity)
+  - sqrt(FILT_NTU) : low-range sensitivity (diffusion-controlled at clean conditions)
+  - (-ln eta) : first-order reaction kinetics (dC/dt = -kC => C = C0*e^{-kt})
+  - ALUM/RW_NTU : coagulant dosing ratio (insufficient dosing => sharp deterioration)

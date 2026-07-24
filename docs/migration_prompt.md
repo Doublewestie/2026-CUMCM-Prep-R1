@@ -12,6 +12,7 @@
 - `Code/PLAN.md` — 分阶段实施计划
 - `Code/PLAN-details.md` — 完整数学推导(800行+)
 - `Code/docs/specs/2026-07-23-architecture-design.md` — 原始架构设计（参考）
+- **`Code/docs/specs/2026-07-24-Q1三级分层灰箱-design.md`** — Q1三级灰箱方案规格（当前方案）
 - **`Code/README.md`** — 项目核心结果速览（NTU R²=0.727, T3 η_coag#1）
 
 ### 必读（决策历史）

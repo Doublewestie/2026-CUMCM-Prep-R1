@@ -22,6 +22,8 @@
 | sum_4 | Q2时滞估计+TCN | TCN R²=-0.15, AR(6)R²=0.52 |
 | sum_4b | 灰箱重构+双模阈值 (队友版) | V4_DualMode R²=0.53, 阈值0.15 |
 | **sum_5** | **Q1三级分层灰箱 (当前方案)** | **CSTR NTU R²=0.727, T3 η_coag#1** |
+| sum_6 | Q1阈值敏感性分析 | 0.05/0.15 数据驱动验证为全局最优 |
+| **sum_7** | **A线CSTR物理模型细化全历程** | **分tier A: R²=0.783, A={400,250,30}** |
 
 ### Reference/sums/ (方法论学习, agent面向)
 
@@ -32,6 +34,9 @@
 | sum_3 | Q1三级分层灰箱学习总结 | CSTR物理模型, 三级分区策略 |
 | sum_4 | Q2双模阈值诊断学习总结 | Jenks/CorrBreak/GMM, 操作员反馈 |
 | sum_5 | Q3-Q5方法论前瞻 | 已验证发现+约束+教训清单 |
+| sum_6 | Q1阈值敏感性分析 | 离散分布特征, 相关性断层扫描 |
+| **sum_7** | **A线CSTR物理模型细化** | **分tier A发现, N-CSTR/Fr/加速度消融, 5项失败+1项突破** |
+| **sum_8** | **B线负反馈控制回路探索** | **Granger/IRF/eta 隐藏反馈/状态空间/三项修正** |
 
 ### logs (`Code/docs/logs/`)
 
@@ -42,6 +47,9 @@
 | latest_2 | Q1调参 | 误差分析+LGBM调参 |
 | latest_3 | Q2旧方案 | TCN+消融, 统计方法全失败 |
 | latest_4 | Q1三级灰箱重构 | 三级分区+CSTR+反馈扫参 |
+| latest_5 | 阈值敏感性分析 | T1 0.05 vs 0.06 对比 + T2/T3 扫描 |
+| latest_6 | A线CSTR物理模型细化 | step1.6→1.7→1.7+ 全历程 + 0.3-0.5 诊断 |
+| latest_7 | B线负反馈探索 | Granger/IRF/eta 隐藏反馈/三项修正 |
 
 ---
 
@@ -64,10 +72,12 @@
 | `step1.2_tier2_experiment.py` | T2(0.05~0.15): 经验分布 vs 对数压缩灰箱双路径 | ~170 |
 | `step1.3_tier3_greybox.py` | T3(>0.15): CSTR+线性反馈+τ₁可学习+λ₃扫参 | ~280 |
 | `step1.4_feature_importance.py` | T3特征重要性: SHAP+Permutation, η_coag#1 | ~100 |
-| `step1.5_visualization.py` | 三级可视化: 分布+特征重要性+CSTR预测+T1分布 | ~130 |
-| `run_q1_full.py` | 全流程汇总表 | ~130 |
+| `step1.5_visualization.py` | 三级可视化 + CSTR预测图 (分tier A) | ~135 |
+| `step1.6_cstr_refinement.py` | N-CSTR/延迟/变面积/管壁释放 消融 (探索档案) | ~330 |
+| `step1.7_final_cstr.py` | **分tier A + 四阶段扫参 (当前最优)** | ~400 |
+| `run_q1_full.py` | 全流程汇总表 | ~116 |
 
-**核心结果**: NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t), 全量R²=**0.727** (vs 原XGBoost 0.34)
+**核心结果 (step1.7_final)**: A = {T1:400, T2:250, T3:30}, 全量 R²=**0.7827** (vs 原 XGBoost 0.34, vs CSTR基线 0.727)
 
 ### Q2 双模诊断方案 (队友, step2.x)
 
@@ -124,3 +134,4 @@ clean_data.csv (4375行)
 | F5 | T1分布离散: 仅4个值 {0.02,0.03,0.04,0.05} | 经验频率: 0.4%/22.4%/51.8%/25.4% | step1.1 |
 | F6 | 舒适区r(FILT,NTU)=0.03, 应力区=0.79 | 分层相关分析 | step2.3 |
 | F7 | 操作员策略R²=0.0067(线性不可表示) | OLS分解 | step2.1+ |
+| F8 | 清池A为regime-dependent: T1→400, T3→30 | 分tier扫参 + 40组联合扫 | step1.7+ |

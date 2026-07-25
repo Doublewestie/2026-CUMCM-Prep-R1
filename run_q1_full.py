@@ -85,6 +85,17 @@ print(f"    T1 (<=0.05, 49%): Empirical sampling               {m_f['r2']!s:<10}
 print(f"    T2 (0.05~0.15, 30%): {rec:<20}             {pb.get('filt_r2',pa.get('filt_r2','?'))!s:<10} {pb.get('filt_rmse',pa.get('filt_rmse','?'))!s:<10}")
 print(f"    T3 (>0.15, 21%): CSTR+{tier3_best['fb_type']} feedback         {tier3_best['overall_r2']!s:<10} {tier3_best['cv_rmse_mean']!s:<10}")
 
+# Final CSTR formula (step1.7_final)
+print(f"\n  [8] Final CSTR Formula (step1.7_final_cstr.py)")
+print(f"  {'Method':<55} {'NTU R2':<10} {'T3 R2':<10} {'ext R2':<10}")
+print(f"  {'-'*85}")
+print(f"  Baseline CSTR (A=141.3, single):                     {'0.7272':<10} {'0.6681':<10} {'0.5749':<10}")
+print(f"  Per-Tier A = {{T1:400, T2:250, T3:30}}:               {'0.7827':<10} {'0.7499':<10} {'0.7059':<10}")
+print(f"  dR2 (baseline -> final):                              {'+0.0555':<10} {'+0.0818':<10} {'+0.1310':<10}")
+print(f"  Parameters: A_T1=400 (normal), A_T2=250 (transition), A_T3=30 (crisis)")
+print(f"  Discovery: Clearwell behaves as large slow-mixing tank under normal")
+print(f"             conditions, but switches to near-throughflow under crisis.")
+
 # Key innovation summary
 print(f"\n\n  {'='*80}")
 print(f"  KEY INNOVATIONS")
@@ -93,10 +104,12 @@ innovations = [
     "1. Three-Tier Partition: FILT_NTU split at 0.05 and 0.15 based on empirical distributions",
     "2. T1: Noise-dominated zone treated with empirical sampling (JS divergence=0.05 vs Gaussian 0.64)",
     "3. T2: Log-compressed greybox maps T3's physical structure into transitional zone via learned k,alpha",
-    "4. T3: CSTR model found to apply to NTU (清水池混合), not FILT — fundamental structural insight",
+    "4. T3: CSTR model found to apply to NTU (qingshuichi mixing), not FILT — fundamental structural insight",
     "5. tau_1 learned via softmax (peak at 4h): skip traditional statistical delay estimation",
     "6. Linear operator feedback + sigmoid gamma(t) modeling human control actions in loss function",
     "7. eta_coag discovered as #1 T3 factor (Robust=0.335) — removal efficiency dominates in stress zone",
+    "8. Per-tier A: Clearwell effective area switches from 400 (normal) to 30 (crisis) — 13x regime shift",
+    "9. Final model: 3-parameter CSTR (A_tier) + empirical T1/T2 = R2=0.783, +0.056 vs baseline",
 ]
 for i in innovations:
     print(f"  {i}")

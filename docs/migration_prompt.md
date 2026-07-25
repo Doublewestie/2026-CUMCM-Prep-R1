@@ -13,6 +13,7 @@
 - `Code/PLAN-details.md` — 完整数学推导(800行+)
 - `Code/docs/specs/2026-07-23-architecture-design.md` — 原始架构设计（参考）
 - **`Code/docs/specs/2026-07-24-Q1三级分层灰箱-design.md`** — Q1三级灰箱方案规格（当前方案）
+- **`Code/docs/specs/2026-07-25-q2-tau-identification-design.md`** — Q2 tau辨识设计规格
 - **`Code/README.md`** — 项目核心结果速览（NTU R²=0.727, T3 η_coag#1）
 
 ### 必读（决策历史）
@@ -22,6 +23,7 @@
 - `Code/docs/sums/sum_4_Q2时滞估计与动态建模实验结果.md` — 旧TCN方案(R²=-0.15)
 - `Code/docs/sums/sum_4b_灰箱模型重构与双模态阈值发现.md` — 双模CSTR重构(队友)
 - **`Code/docs/sums/sum_5_Q1三级分层灰箱建模.md`** — **三级方案（当前, NTU R²=0.727）**
+- **`Code/docs/sums/sum_6_Q2物理结构化时滞辨识与闭环因果掩蔽.md`** — **Q2物理方法+伪数据验证（当前）**, tau*=4h
 
 ### 必读（方法论学习，agent面向）
 - `Code/Reference/sums/sum_1_Q1特征筛选学习总结.md`
@@ -29,6 +31,7 @@
 - `Code/Reference/sums/sum_3_Q1三级分层灰箱学习总结.md`
 - `Code/Reference/sums/sum_4_Q2双模阈值诊断学习总结.md`
 - `Code/Reference/sums/sum_5_Q3Q5方法论前瞻.md`
+- **`Code/Reference/sums/sum_6_Q2伪数据验证与Langmuir模型学习总结.md`** — Q2方法论教训
 - `Code/Reference/docs/CONSTITUTION.md`
 - `Code/Reference/docs/INDEX.md`
 
@@ -45,8 +48,8 @@
 ## Step 3: 恢复当前任务上下文
 
 ### 已完成（按Phase）
-- **Phase 1 (Q1)**: 三级分层灰箱方案已闭环。CSTR段2 NTU全量 R²=0.727。T3特征重要性: η_coag#1(0.335)。τ₁=4h softmax学习。
-- **Phase 2 (Q2)**: 双模阈值诊断已闭环。CCF/MIC/TE三方法全部失效。AR(6) R²=0.52 > TCN R²=-0.15。
+- **Phase 1 (Q1)**: 三级分层灰箱方案已闭环。CSTR段2 NTU全量 R²=0.727。T3特征重要性: η_coag#1(0.335)。τ₁=4h softmax学习。Q1修正：段1时滞对齐(τ=4h) + η升级为Langmuir + 函数关系改递推方程。
+- **Phase 2 (Q2)**: 已闭环。CCF/MIC/TE三方法全失效；物理结构化扫描+伪数据验证完成：方法论正确(τ识别✅)，真实数据τ不可辨识(闭环掩蔽)。最终答案为τ*=4h (softmax+工艺双重验证)。C_phys=0.0027→η_phys=99.73%。
 - **Phase 3-5 (Q3/Q4/Q5)**: 代码骨架已创建，内容待实现。
 
 ### 待完成（按优先级）
@@ -63,12 +66,14 @@
 ## Step 4: 硬约束速查
 
 1. `Reference/` 位于 git 根目录内 (`Code/Reference/`), 随代码一同版本控制
-2. CSTR段2公式: NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t), β₂=exp(-2h/θ)
+2. CSTR段2公式: NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t), β₂=exp(-2h/θ), A=141.3
 3. 三级分区: T1(≤0.05, 经验采样), T2(0.05~0.15, 对数压缩), T3(>0.15, CSTR+反馈)
-4. 物理约束只在违规出现时激活；否则用硬裁剪
-5. 全部模型在2025年数据上用TimeSeriesSplit验证, 2026年仅做最终预测
-6. 时滞参数不硬传给Q3——用注意力机制自适应学习
-7. math-name命名规范: `step{N}.{M}_{description}.py`
+4. τ*_total = 4h (2步) — Q1softmax+工艺双重验证, 作为Q3注意力soft prior
+5. Q1段1时滞对齐: RW_NTU(t) → RW_NTU(t-2), η升级为Langmuir形式
+6. C_phys = 0.00273, η_phys = 99.73% (物理段去除率, 舒适区独立估计)
+7. 物理约束只在违规出现时激活；否则用硬裁剪
+8. 全部模型在2025年数据上用TimeSeriesSplit验证, 2026年仅做最终预测
+9. 闭环控制掩蔽是统一物理理论 — 贯穿Q1→Q2→Q3论文叙事
 
 ---
 

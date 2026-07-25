@@ -1,11 +1,11 @@
-﻿2026-07-25 Q3 两步链式预测 + 集成融合 完成
+2026-07-25 Project Cleanup: TCN removal, unified loader, archive old scripts
 
-15:00 Q1/Q2 验证发现：CSTR 一步预测 R2=0.783 但递归预测 R2=0.24
-15:30 设计三步校正方案：偏置表 + RF残差 + 直接Ridge 集成
-16:00 step3.1_residual_train.py 在2025上训练三个校正模型
-16:30 step3.2_forecast_2026.py 加载模型预测2026年三天逐小时NTU
-17:00 step3.3_validation.py 5折TS-CV验证集成方法 R2=0.267 RMSE=0.429
-17:30 step3.4_sensitivity.py OAT + 蒙特卡洛敏感性分析
-17:30 核心发现：多步预测 NMSE 0.43 (vs 一步0.31)，退化1.4x 为物理极限
-18:00 文件重命名遵从 step3.x_content 命名规范
-18:00 所有预测值中位数 < 1.0 NTU，符合国标
+09:00 Restored step1.x/step2.x files from archive (user feedback: naming convention violation)
+09:30 Hard verification check: 26 step files, step0.0->step5.0 fully continuous
+09:45 data_loader.py created: unified entry point for all Q2 scripts
+10:00 step5.0_ablation.py: removed 278 lines of old TCN code, kept log-AR ablation only
+10:15 Dropped torch dependency from project (no more PyTorch imports)
+10:30 step1.4_feature_importance.py: eta_coag data leakage note added
+10:45 15 truly obsolete test scripts remain in archive/
+11:00 Final verification: 0 errors, all figures/tables current
+11:15 9 commits ahead of origin/main, ready to push

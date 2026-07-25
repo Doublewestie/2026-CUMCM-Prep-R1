@@ -21,8 +21,12 @@
 - `Code/docs/sums/sum_3_Q1实验结果与函数关系.md` — 旧XGBoost方案(R²=0.34)
 - `Code/docs/sums/sum_4_Q2时滞估计与动态建模实验结果.md` — 旧TCN方案(R²=-0.15)
 - `Code/docs/sums/sum_4b_灰箱模型重构与双模态阈值发现.md` — 双模CSTR重构(队友)
-- **`Code/docs/sums/sum_5_Q1三级分层灰箱建模.md`** — **三级方案（当前, NTU R²=0.727）**
-- **`Code/docs/sums/sum_9_Q4三维风险评分与四级分类.md`** — **Q4三维评分+分区Jenks+事件回溯（已闭环）**
+- **`Code/docs/sums/sum_5_Q1三级分层灰箱建模.md`** — **三级方案 (NTU R²=0.727)**
+- `Code/docs/sums/sum_6_Q1阈值敏感性分析.md` — 阈值 0.05/0.15 验证为全局最优
+- **`Code/docs/sums/sum_7_A线CSTR物理模型细化.md`** — **A线终点: 分tier A + 平衡检测器, R²=0.807**
+- `Code/docs/sums/sum_8_Q2_log_AR_final.md` — Q2 log-AR(6)+RidgeCV 终版
+- `Code/docs/sums/sum_9_Q4三维风险评分与四级分类.md` — Q4 方案
+- `Code/docs/sums/sum_10_project_cleanup.md` — 项目重构记录
 
 ### 必读（方法论学习，agent面向）
 - `Code/Reference/sums/sum_1_Q1特征筛选学习总结.md`

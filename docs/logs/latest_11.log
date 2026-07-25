@@ -1,9 +1,11 @@
-2026-07-25 Q4 三维风险评分完成 + results 整理
+﻿2026-07-25 Q3 两步链式预测 + 集成融合 完成
 
-23:50 Q4 step4.0 三维评分实现 融合Q2分区+Q1η_coag 熵权法赋权
-23:52 Q4 step4.1 分区独立Jenks 舒适区3级+应力区3级→统一四级
-23:55 Q4 step4.2 FCE+Bootstrap+事件回溯验证 超标捕获率88.76%
-23:58 Q4 step4.4 2026年3月12条数据分级预测 Grade1:1/Grade2:11
-00:00 Q4 step4.5 7张图+7sheet Excel输出 饼图重叠修复
-00:05 results文件夹整理 Q1-Q4答案+figures+tables 共21图+18表+2Excel+1TXT
-00:10 Agent-memory收尾 提交GitHub
+15:00 Q1/Q2 验证发现：CSTR 一步预测 R2=0.783 但递归预测 R2=0.24
+15:30 设计三步校正方案：偏置表 + RF残差 + 直接Ridge 集成
+16:00 step3.1_residual_train.py 在2025上训练三个校正模型
+16:30 step3.2_forecast_2026.py 加载模型预测2026年三天逐小时NTU
+17:00 step3.3_validation.py 5折TS-CV验证集成方法 R2=0.267 RMSE=0.429
+17:30 step3.4_sensitivity.py OAT + 蒙特卡洛敏感性分析
+17:30 核心发现：多步预测 NMSE 0.43 (vs 一步0.31)，退化1.4x 为物理极限
+18:00 文件重命名遵从 step3.x_content 命名规范
+18:00 所有预测值中位数 < 1.0 NTU，符合国标

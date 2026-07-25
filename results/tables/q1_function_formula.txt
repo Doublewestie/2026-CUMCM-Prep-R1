@@ -1,22 +1,14 @@
-Q1.1 Explicit Function (Ridge Regression in log1p space)
-==========================================================
+Q1 Final Model: 3-Tier CSTR + Balance Detector
+================================================
+R2 = 0.8072  RMSE = 0.2896
 
-log(1 + NTU) = 1.4070
-  - 0.2867 * CLR
-  - 0.2619 * eta
-  + 0.2552 * (-ln eta)
-  + 0.1491 * FILT_NTU
-  + 0.1294 * FILT_NTU_mean3
-  - 0.0576 * CW_WELL_LEVEL_std12
-  - 0.0485 * CW_WELL_LEVEL
-  - 0.0465 * FILT_NTU_std12
+NTU(t) = beta2(t) * NTU(t-1) + (1 - beta2(t)) * FILT(t)
+beta2(t) = exp(-2h / theta(t))
+theta(t) = A_eff(t) * CW_WELL(t-1) / TW_FLOW(t-1)
 
-R2 (full data fit) = 0.6993
-
-=== Inverse transform: NTU = exp(formula) - 1 ===
-
-Note: This is a PHYSICS-INSPIRED polynomial approximation.
-  - FILT_NTU^2 : filter breakthrough nonlinearity (NTU rises faster at high turbidity)
-  - sqrt(FILT_NTU) : low-range sensitivity (diffusion-controlled at clean conditions)
-  - (-ln eta) : first-order reaction kinetics (dC/dt = -kC => C = C0*e^{-kt})
-  - ALUM/RW_NTU : coagulant dosing ratio (insufficient dosing => sharp deterioration)
+A_eff(t) by FILT tier:
+  T1 (FILT <= 0.05):         A = 400
+  T2 (0.05 < FILT <= 0.15):  A = 250
+  T3 (FILT > 0.15):
+    (RL - 6.09) * (Q - 44.0) > 0  => A = 100  (same direction)
+    (RL - 6.09) * (Q - 44.0) < 0  => A = 20   (opposite direction)

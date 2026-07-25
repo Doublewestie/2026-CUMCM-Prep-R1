@@ -1,0 +1,13 @@
+2026-07-25 Q2 Final Closed: log(FILT) AR(6) + RidgeCV
+
+09:00 Q2 ARDL-tau + ensemble model averaging tested: R2=0.7073
+09:30 Decision: use log(FILT+1e-3) AR(6) + RidgeCV as final (R2=0.6955, RMSE=0.2412)
+09:45 Scheme B (log-space binning) and Scheme C (FILT 3-tier) both tested, both WORSE than unified model
+10:00 q2_final.py rewritten with AR(6)+RidgeCV; outputs English-only results
+10:15 Q2 figures generated (pred_vs_actual, residual_diagnostics, feature_importance, tier_comparison)
+10:30 step5.0_ablation.py updated with Q2 log-AR ablation (8 configs compared)
+10:45 Results tables saved: tier_metrics.csv, ar6_coefficients.csv
+11:00 All Chinese removed from output labels, replaced with English
+11:15 Project status: Q1/Q2 fully closed, Q3-Q5 skeleton files only
+11:30 BUGFIX: q2_generate_figures.py TS-CV R2 was using global concat (0.790) instead of per-fold mean (0.6955)
+11:30 Figures regenerated with correct per-fold mean R2=0.6955+-0.084, re-committed

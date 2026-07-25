@@ -211,8 +211,8 @@ step3.2_meta_feature_matrix.py → ŷ_final(t+1:t+H) 预测值
 # step0_config.py
 class Config:
     # 数据
-    data_2025_path = "../题目/第一次模拟训练题目/B题/B题附件/附件1  2025数据集/"
-    data_2026_path = "../题目/第一次模拟训练题目/B题/B题附件/附件2  2026数据集/"
+    data_2025_path = "data/2025/"
+    data_2026_path = "data/2026/"
     
     # 物理常数
     NTU_STANDARD = 1.0          # 国标限值

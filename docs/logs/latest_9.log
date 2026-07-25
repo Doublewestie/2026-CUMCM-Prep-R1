@@ -1,0 +1,11 @@
+2026-07-25 Project Cleanup: TCN removal, unified loader, archive old scripts
+
+09:00 Restored step1.x/step2.x files from archive (user feedback: naming convention violation)
+09:30 Hard verification check: 26 step files, step0.0->step5.0 fully continuous
+09:45 data_loader.py created: unified entry point for all Q2 scripts
+10:00 step5.0_ablation.py: removed 278 lines of old TCN code, kept log-AR ablation only
+10:15 Dropped torch dependency from project (no more PyTorch imports)
+10:30 step1.4_feature_importance.py: eta_coag data leakage note added
+10:45 15 truly obsolete test scripts remain in archive/
+11:00 Final verification: 0 errors, all figures/tables current
+11:15 9 commits ahead of origin/main, ready to push

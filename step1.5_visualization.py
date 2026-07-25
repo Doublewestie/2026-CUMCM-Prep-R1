@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
 plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["axes.unicode_minus"] = False
-from step1_shared_utils import load_clean_data, add_tier_labels
+from step1_shared import load_clean_data, add_tier_labels
 from step0_config import *
 warnings.filterwarnings("ignore")
 

@@ -20,7 +20,16 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 CLEAN_CSV = os.path.join(OUTPUT_DIR, "clean_data.csv")
 
 T1_THR, T2_THR = 0.05, 0.15
-A_T1, A_T2, A_T3 = 400, 250, 30
+
+_cstr_path = os.path.join(OUTPUT_DIR, "cstr_final_best.json")
+if os.path.exists(_cstr_path):
+    with open(_cstr_path) as f:
+        _cstr = json.load(f)
+    A_T1 = _cstr.get("A_T1", 400)
+    A_T2 = _cstr.get("A_T2", 250)
+    A_T3 = _cstr.get("A_T3", 30)
+else:
+    A_T1, A_T2, A_T3 = 400, 250, 30
 
 # ==============================================================
 # 1. Load data

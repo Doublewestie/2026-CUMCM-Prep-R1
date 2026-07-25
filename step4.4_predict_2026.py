@@ -15,13 +15,10 @@ EPS = 1e-10
 
 def find_2026_march():
     """定位2026年3月Excel文件"""
-    base = r"C:\Users\lenovo\2026-CUMCM-Prep-R1\data\2025"
-    for d in os.listdir(base):
-        dp = os.path.join(base, d)
-        if os.path.isdir(dp) and "2026" in d:
-            for f in os.listdir(dp):
-                if "3" in f or "Mar" in f or "mar" in f or "03" in f:
-                    return os.path.join(dp, f)
+    for f in os.listdir(DATA_DIR_2026):
+        fp = os.path.join(DATA_DIR_2026, f)
+        if os.path.isfile(fp) and ("3" in f or "Mar" in f or "03" in f):
+            return fp
     return None
 
 

@@ -1,4 +1,4 @@
-# Sum 5: Q1 三级分层灰箱建模实验结果
+﻿# Sum 5: Q1 三级分层灰箱建模实验结果
 
 > 三级FILT分区(T1≤0.05 / T2 0.05~0.15 / T3>0.15) + CSTR物理模型 + 负反馈调节 | 2026-07-24
 
@@ -241,13 +241,13 @@ log(1+NTU) = 1.407 - 0.287·CLR - 0.262·η_coag + 0.255·(-ln η) + 0.149·FILT
 ```
 Code/
 ├── step0_config.py                  # [修改] 全局配置+三级参数
-├── step1_shared_utils.py            # [新建] 共享数据加载+灰箱工具
+├── step1_shared.py            # [新建] 共享数据加载+灰箱工具
 ├── step1.0_tier_classifier.py       # [新建] 三级分类器 (C1+C2)
 ├── step1.1_tier1_noise.py           # [新建] T1经验频率采样
 ├── step1.2_tier2_experiment.py      # [新建] T2双路径对比
 ├── step1.3_tier3_greybox.py         # [新建] T3 CSTR+反馈+τ₁+λ₃扫参
 ├── step1.4_feature_importance.py    # [新建] T3特征重要性 (SHAP+Perm)
-├── step1_summary_report.py          # [新建] 全流程汇总表
+├── step1.9+_summary_report.py          # [新建] 全流程汇总表
 └── output/                          # 所有实验结果
 ```
 

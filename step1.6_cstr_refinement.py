@@ -1,7 +1,7 @@
 """
 step1.6_cstr_refinement.py — A-line CSTR formula refinement (N-CSTR + delay + var-area + wall-release)
 ======================================================================================================
-Self-contained ablation experiment. No dependency on step1.3 or step1_shared_utils.
+Self-contained ablation experiment. No dependency on step1_shared.
 Reads clean_data.csv directly. All params defined locally.
 
 Refinements:

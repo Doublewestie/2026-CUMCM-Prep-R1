@@ -74,8 +74,7 @@ def plot_error_accumulation():
     with open(os.path.join(MODEL_DIR, "validation_results.json")) as f:
         val = json.load(f)
     # Aggregate fold results into step-by-step errors
-    BASE = r'C:\Users\lenovo\2026-CUMCM-Prep-R1'
-    df = pd.read_csv(os.path.join(BASE, 'output', 'clean_data.csv'))
+    df = pd.read_csv(os.path.join(OUTPUT_DIR, 'clean_data.csv'))
     ntu = df['NTU'].values.astype(float); filt = df['FILT_NTU'].values.astype(float)
     cw = df['CW_WELL_LEVEL'].values.astype(float); q = df['TW_FLOW'].values.astype(float)
     n = len(ntu)

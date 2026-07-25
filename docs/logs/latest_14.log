@@ -1,0 +1,29 @@
+2026-07-26 math_name 命名规范化审查
+
+17:00 math_name 规范审查: 14个文件违反 step{N}.{M}{+}_{desc}.py 格式
+17:10 重命名14文件:
+      step1_generate_figures.py → step1.7+_cstr_figures.py
+      step1_physical_model_reconstruct.py → step1.9_physical_reconstruct.py
+      step1_shared_utils.py → step1_shared.py
+      step1_summary_report.py → step1.9+_summary_report.py
+      step2_ardl_tau_ensemble.py → step2.2+_ardl_ensemble.py
+      step2_binning_strategy_compare.py → step2.6_binning_compare.py
+      step2_final_model.py → step2.5_logar_final.py
+      step2_generate_figures.py → step2.7_generate_figures.py
+      step2_optimize_logar6.py → step2.5+_logar_optimize.py
+      step2_tau_identification_scan.py → step2.0+_tau_scan.py
+      step2_transform_selection.py → step2.1++_transform_selection.py
+      step3_summary_report.py → step3.5+_summary_report.py
+      final_summary.py → step5.2_final_summary.py
+      package_paper_figures.py → step5.3_package_figures.py
+      step2_shared.py → step2.0-_shared.py → 回退(点划线不合法)→保持 step2_shared.py
+17:20 修复6处Python import (step1_shared_utils → step1_shared), 14处docstring残留
+17:25 批量修复37处.md文档引用 (10文件), 零残留验证通过
+17:30 step1_shared import + step2_shared import 测试通过, 语法检查通过
+
+17:40 文档死引用修复:
+      Reference/sums/sum_9_墙模型与RLxQ规则发现全历程.md 从未创建
+      → migration_prompt.md + INDEX.md 引用更新为现有文件 (sum_7 + latest_8.log + 交接说明)
+17:45 latest_14.log 记录本次命名变更
+
+测试状态: 全部import验证通过, 零残留引用

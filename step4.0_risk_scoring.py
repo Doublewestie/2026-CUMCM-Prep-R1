@@ -19,12 +19,57 @@ EPS = 1e-10
 
 
 def load_q2_params():
-    fp = os.path.join(OUTPUT_DIR, "q2_final_results.json")
+    fp = os.path.join(OUTPUT_DIR, "step2_final_results.json")
     if not os.path.exists(fp):
-        print("  [WARN] q2_final_results.json not found, using defaults")
+        print("  [WARN] step2_final_results.json not found, using defaults")
         return {"tau_params": {"RW_NTU_to_FILT_hours": 4}}
     with open(fp, encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_cstr_params():
+    fp = os.path.join(OUTPUT_DIR, "cstr_final_best.json")
+    if not os.path.exists(fp):
+        print("  [WARN] cstr_final_best.json not found, using defaults")
+        return {"A_T1": 400, "A_T2": 250, "A_T3": 30,
+                "A_T3_rule": {"A_same": 100, "A_diff": 20},
+                "RL_med": 6.09, "Q_med": 44.0}
+    with open(fp, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def compute_per_sample_beta2(filt_ntu, cw_well, tw_flow, river_level, cstr):
+    """Compute CSTR beta2 per sample using actual per-tier A + Balance Detector."""
+    n = len(filt_ntu)
+    beta2 = np.full(n, 0.95)
+    T1_THR, T2_THR = 0.05, 0.15
+    A_T1 = cstr.get("A_T1", 400)
+    A_T2 = cstr.get("A_T2", 250)
+    A_T3 = cstr.get("A_T3", 30)
+    rule = cstr.get("A_T3_rule", {})
+    A_same = rule.get("A_same", 100)
+    A_diff = rule.get("A_diff", 20)
+    RL_med = cstr.get("RL_med", 6.09)
+    Q_med = cstr.get("Q_med", 44.0)
+
+    for t in range(1, n):
+        H = max(cw_well[t - 1], 0.1)
+        Qv = max(tw_flow[t - 1], 1.0)
+        ft = filt_ntu[t]
+        if ft <= T1_THR:
+            A0 = A_T1
+        elif ft <= T2_THR:
+            A0 = A_T2
+        else:
+            rv = river_level[t]
+            if not np.isnan(rv):
+                A0 = A_same if (rv - RL_med) * (tw_flow[t] - Q_med) > 0 else A_diff
+            else:
+                A0 = A_T3
+        theta = A0 * H / Qv
+        theta = max(theta, 0.02)
+        beta2[t] = np.clip(np.exp(-2.0 / theta), 0.001, 0.999)
+    return beta2
 
 
 def compute_f1_amplitude(ntu, filt_ntu, month, theta=Q4_THETA):
@@ -51,8 +96,8 @@ def compute_f1_amplitude(ntu, filt_ntu, month, theta=Q4_THETA):
     return f1
 
 
-def compute_f2_duration(ntu, filt_ntu, theta=Q4_THETA):
-    """f₂: 分区T_half + CSTR β₂惯性折扣"""
+def compute_f2_duration(ntu, filt_ntu, beta2_arr, theta=Q4_THETA):
+    """f₂: 分区T_half + CSTR β₂惯性折扣 (per-sample beta2 from actual CSTR model)"""
     f2 = np.zeros_like(ntu)
     exceed = (ntu > Q4_NTU_LIMIT).astype(float)
     n = len(ntu)
@@ -69,7 +114,7 @@ def compute_f2_duration(ntu, filt_ntu, theta=Q4_THETA):
             gamma = np.log(2) / Q4_T_HALF_STRESS
             d_eff = d_run
         if i > 0 and filt_ntu[i] < theta and ntu[i] > Q4_NTU_LIMIT:
-            d_eff = d_run * Q4_BETA_CSTR
+            d_eff = d_run * beta2_arr[i]
         f2[i] = 1 - np.exp(-gamma * d_eff)
     return f2
 
@@ -125,12 +170,20 @@ def main():
     rw_ntu = df["RW_NTU"].values.astype(float)
     month = df["DATE"].dt.month.values.astype(float)
 
-    print("\n[2/5] 计算 η_coag (Q1融合)...")
+    print("\n[2/5] 加载 CSTR/Q2 参数 + 计算 η_coag...")
+    cstr = load_cstr_params()
+    cw_well = df["CW_WELL_LEVEL"].values.astype(float)
+    tw_flow = df["TW_FLOW"].values.astype(float)
+    rl = df["RIVER_LEVEL"].values.astype(float)
+    beta2 = compute_per_sample_beta2(filt, cw_well, tw_flow, rl, cstr)
+    print(f"  beta2 per-tier: T1 median={np.median(beta2[filt<=0.05]):.3f}, "
+          f"T2 median={np.median(beta2[(filt>0.05)&(filt<=0.15)]):.3f}, "
+          f"T3 median={np.median(beta2[filt>0.15]):.3f}")
     eta = compute_eta_coag(rw_ntu, filt)
 
     print("\n[3/5] 三维评分计算...")
     f1 = compute_f1_amplitude(ntu, filt, month)
-    f2 = compute_f2_duration(ntu, filt)
+    f2 = compute_f2_duration(ntu, filt, beta2)
     f3 = compute_f3_trend(ntu, filt, eta)
 
     print(f"  f1幅度: mean={f1.mean():.4f} std={f1.std():.4f}")

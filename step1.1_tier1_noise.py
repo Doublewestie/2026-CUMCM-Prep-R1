@@ -6,7 +6,7 @@ Output: tier1_report.json (distribution stats + validation)
 """
 import numpy as np, pandas as pd, os, json, warnings
 from scipy.spatial.distance import jensenshannon
-from step1_shared_utils import load_clean_data, add_tier_labels, compute_metrics
+from step1_shared import load_clean_data, add_tier_labels, compute_metrics
 from step0_config import *
 warnings.filterwarnings("ignore")
 

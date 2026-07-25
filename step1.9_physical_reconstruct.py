@@ -1,5 +1,5 @@
 """
-step1_physical_model_reconstruct.py — Q1 物理模型重构
+step1.9_physical_reconstruct.py — Q1 物理模型重构
 ====================================================
 方法论:
   段I (化学段):  Langmuir 吸附 + 季节调制 + CLR 竞争

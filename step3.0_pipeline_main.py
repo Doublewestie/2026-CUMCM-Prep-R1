@@ -6,15 +6,15 @@ Produces Q1 (2h) and Q3 (1h) predictions for Feb 1/10/20.
 """
 
 import numpy as np, pandas as pd, os, json, sys, warnings
+from step0_config import DATA_DIR_2026 as DATA_2026
 warnings.filterwarnings("ignore")
 EPS = 1e-3
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-DATA_2026 = os.path.join(BASE_DIR, "data", "2025", "附件2  2026数据集")
 CLEAN_CSV = os.path.join(OUTPUT_DIR, "clean_data.csv")
 CSTR_JSON = os.path.join(OUTPUT_DIR, "cstr_final_best.json")
-AR6_JSON = os.path.join(OUTPUT_DIR, "q2_final_results.json")
+AR6_JSON = os.path.join(OUTPUT_DIR, "step2_final_results.json")
 
 # Params
 A_T1, A_T2, A_T3 = 400, 250, 30
@@ -351,7 +351,7 @@ def main():
     with open(CSTR_JSON) as f:
         cbest = json.load(f)
     q1_r2 = cbest["R2_all"]
-    q1_rmse = 0.345  # From Q1 summary (step1_summary_report.py)
+    q1_rmse = 0.345  # From Q1 summary (step1.9+_summary_report.py)
 
     print(f"\n  Q1 CSTR baseline (2025 full TS-CV):")
     print(f"  R2  = {q1_r2:.4f}")

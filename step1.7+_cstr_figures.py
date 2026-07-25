@@ -1,5 +1,5 @@
 """
-step1_generate_figures.py — Generate Q1 final figures (3-tier CSTR model)
+step1.7+_cstr_figures.py — Generate Q1 final figures (3-tier CSTR model)
 Model: NTU(t) = beta2(t)*NTU(t-1) + (1-beta2(t))*FILT(t)
        beta2(t) = exp(-2h/theta), theta = A_tier * CW_WELL(t-1) / TW_FLOW(t-1)
        A_tier = 400 (T1), 250 (T2), 30 (T3)
@@ -17,16 +17,17 @@ import warnings; warnings.filterwarnings('ignore')
 
 plt.rcParams.update({'font.size': 11, 'axes.titlesize': 13, 'axes.labelsize': 12})
 
-BASE = r'C:\Users\lenovo\2026-CUMCM-Prep-R1'
-OUT_FIG = os.path.join(BASE, 'results', 'figures')
-OUT_TAB = os.path.join(BASE, 'results', 'tables')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUT_FIG = os.path.join(BASE_DIR, 'results', 'figures')
+OUT_TAB = os.path.join(BASE_DIR, 'results', 'tables')
+OUTPUT_DIR = os.path.join(BASE_DIR, 'output')
 os.makedirs(OUT_FIG, exist_ok=True)
 os.makedirs(OUT_TAB, exist_ok=True)
 EPS = 1e-6
 DT = 2.0
 
 # Load clean data from step0 (produces R2=0.7827, consistent with step1.7)
-data = pd.read_csv(os.path.join(BASE, 'output', 'clean_data.csv'))
+data = pd.read_csv(os.path.join(OUTPUT_DIR, 'clean_data.csv'))
 data = data.dropna(subset=['NTU','FILT_NTU','CW_WELL_LEVEL','TW_FLOW']).reset_index(drop=True)
 n = len(data)
 print(f"Data loaded from clean_data.csv: {n} samples")
@@ -36,18 +37,26 @@ ntu = data['NTU'].values.astype(float)
 cw = data['CW_WELL_LEVEL'].values.astype(float)
 tw = data['TW_FLOW'].values.astype(float)
 
-# 3-tier CSTR model with Balance Detector (same as step1.7_final_cstr.py Phase 5)
-A_T1, A_T2, A_T3 = 400, 250, 30
+# Load CSTR params from trained model
+import json
+_cstr_path = os.path.join(OUTPUT_DIR, 'cstr_final_best.json')
+if os.path.exists(_cstr_path):
+    with open(_cstr_path) as f:
+        _cstr = json.load(f)
+else:
+    _cstr = {}
+A_T1 = _cstr.get('A_T1', 400)
+A_T2 = _cstr.get('A_T2', 250)
+A_T3 = _cstr.get('A_T3', 30)
 T1_THR, T2_THR = 0.05, 0.15
 
-# Balance detector params (from Phase 5 best: T3-only median)
-A_same, A_diff = 100, 20
+# Balance detector params from trained model
+_rule = _cstr.get('A_T3_rule', {})
+A_same = _rule.get('A_same', 100)
+A_diff = _rule.get('A_diff', 20)
 rl = data['RIVER_LEVEL'].values.astype(float)
-mT3 = filt > T2_THR
-rl_t3 = rl[mT3]
-rl_t3 = rl_t3[~np.isnan(rl_t3)]
-RL_med = float(np.median(rl_t3)) if len(rl_t3) > 0 else 6.09
-Q_med = float(np.median(tw[mT3]))
+RL_med = _cstr.get('RL_med', 6.09)
+Q_med = _cstr.get('Q_med', 44.0)
 
 def predict_ntu(use_balance=True):
     n = len(ntu)

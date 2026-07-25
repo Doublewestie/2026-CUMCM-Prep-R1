@@ -1,4 +1,4 @@
-# Spec: Q2 tau Identification Design — 物理结构化扫描 + 伪数据验证
+﻿# Spec: Q2 tau Identification Design — 物理结构化扫描 + 伪数据验证
 
 > 决策日期: 2026-07-25 | 状态: 已验证并闭环
 
@@ -142,9 +142,9 @@ flowchart TD
 
 | 文件 | 行数 | 功能 |
 |:---|:---:|------|
-| `Code/step1_physical_model_reconstruct.py` | ~430 | Q1: 物理模型重构 (Langmuir + CSTR) |
-| `Code/step2_tau_identification_scan.py` | ~470 | Q2: 伪数据生成 + τ扫描 + 分区模型 |
-| `Code/final_summary.py` | ~230 | 最终汇总报告生成 |
+| `Code/step1.9_physical_reconstruct.py` | ~430 | Q1: 物理模型重构 (Langmuir + CSTR) |
+| `Code/step2.0+_tau_scan.py` | ~470 | Q2: 伪数据生成 + τ扫描 + 分区模型 |
+| `Code/step5.2_final_summary.py` | ~230 | 最终汇总报告生成 |
 | `Code/output/step1_physical_results.json` | — | Q1物理模型结构化结果 |
 | `Code/output/step2_tau_results.json` | — | Q2时滞辨识结构化结果 |
 | `Code/output/_summary.txt` | — | 完整文字报告 |

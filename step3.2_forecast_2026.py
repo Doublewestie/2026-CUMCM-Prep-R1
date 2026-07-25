@@ -6,12 +6,12 @@ Loads trained models -> FILT reconstruction -> 2h ensemble -> 1h interpolation
 
 import numpy as np, pandas as pd, os, json, pickle, warnings
 from scipy.interpolate import CubicSpline
+from step0_config import DATA_DIR_2026 as DATA_2026
 warnings.filterwarnings("ignore")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 MODEL_DIR = os.path.join(OUTPUT_DIR, "models")
-DATA_2026 = os.path.join(BASE_DIR, "data", "2025", "附件2  2026数据集")
 CLEAN_CSV = os.path.join(OUTPUT_DIR, "clean_data.csv")
 
 T1_THR, T2_THR = 0.05, 0.15

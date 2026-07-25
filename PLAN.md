@@ -1,4 +1,4 @@
-## meta
+﻿## meta
 - status: executing
 - current_step: Stage 1 (三级灰箱完成) → Stage 3
 - current_task: Q1已闭环(Q2已闭环), Q3准备启动
@@ -51,7 +51,7 @@
 | 1.2 | T2双路径对比 (对数压缩灰箱最优) | P0 | 1.0 | tier2_comparison.json | ✅ |
 | 1.3 | T3 CSTR+反馈+τ₁+λ₃扫参 (14组实验) | P0 | 1.0 | tier3_sweep_results.csv | ✅ |
 | 1.4 | T3特征重要性 (SHAP+Permutation) | P0 | 1.3 | tier3_factor_importance.csv | ✅ |
-| 1.5 | 全量NTU R²=0.727验证 + CV 5折=0.732 | P0 | 1.3 | step1_summary_report.py | ✅ |
+| 1.5 | 全量NTU R²=0.727验证 + CV 5折=0.732 | P0 | 1.3 | step1.9+_summary_report.py | ✅ |
 
 **DoD**：T1/T2/T3三级各自验证通过，NTU全量R²=0.727，T3应力区R²=0.742，特征重要性(η_coag#1)输出 ✅
 
@@ -160,8 +160,8 @@ Code/
 ├── step1.2_tier2_experiment.py      # [新建] Q1: T2双路径
 ├── step1.3_tier3_greybox.py         # [新建] Q1: T3 CSTR+反馈
 ├── step1.4_feature_importance.py    # [新建] Q1: T3特征重要性
-├── step1_shared_utils.py            # [新建] Q1: 共享工具函数
-├── step1_summary_report.py          # [新建] Q1: 汇总表
+├── step1_shared.py            # [新建] Q1: 共享工具函数
+├── step1.9+_summary_report.py          # [新建] Q1: 汇总表
 ├── step2.0_greybox_diagnostic.py     # [完成] Q2: 双模阈值检测
 ├── step2.1_stress_tcn.py            # [完成] Q2: 应力区TCN
 ├── step2.1+_closed_loop_decompose.py# [完成] Q2: 闭环分解

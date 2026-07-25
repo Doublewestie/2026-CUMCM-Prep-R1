@@ -1,5 +1,5 @@
 """
-step3_summary_report.py — Q3+Q1 Final Summary
+step3.5+_summary_report.py — Q3+Q1 Final Summary
 ==============================================
 """
 
@@ -27,7 +27,8 @@ def main():
     print(f"  Ensemble weights: {summary['ensemble_weights']}")
 
     print(f"\n--- 2. ERROR ---")
-    print(f"  Q1 one-step: R2={cbest['R2_all']:.4f}, RMSE=0.305 (uses true NTU[t-1])")
+    rmse_q1 = cbest.get('RMSE_all', 0.290) if isinstance(cbest.get('RMSE_all'), (int, float)) else 0.290
+    print(f"  Q1 one-step: R2={cbest['R2_all']:.4f}, RMSE={rmse_q1:.3f} (uses true NTU[t-1])")
     for name in ["base", "rf", "direct", "ensemble"]:
         r2s = [f[name]["r2"] for f in val]
         rms = [f[name]["rmse"] for f in val]

@@ -1,5 +1,5 @@
 """
-step1_summary_report.py — Final Summary Table for Q1 three-tier scheme
+step1.9+_summary_report.py — Final Summary Table for Q1 three-tier scheme
 """
 import numpy as np, os, sys, json
 from step0_config import *
@@ -91,8 +91,10 @@ print(f"  {'Method':<55} {'NTU R2':<10} {'T3 R2':<10} {'ext R2':<10}")
 print(f"  {'-'*85}")
 print(f"  Baseline CSTR (A=141.3, single):                     {'0.7272':<10} {'0.6681':<10} {'0.5749':<10}")
 print(f"  Per-Tier A = {{T1:400, T2:250, T3:30}}:               {'0.7827':<10} {'0.7499':<10} {'0.7059':<10}")
-print(f"  dR2 (baseline -> final):                              {'+0.0555':<10} {'+0.0818':<10} {'+0.1310':<10}")
-print(f"  Parameters: A_T1=400 (normal), A_T2=250 (transition), A_T3=30 (crisis)")
+print(f"  +Balance Detector (A_same=100, A_diff=20):            {'0.8072':<10} {'0.7880':<10} {'0.7424':<10}")
+print(f"  dR2 (baseline -> balance):                            {'+0.0800':<10} {'+0.1199':<10} {'+0.1675':<10}")
+print(f"  Parameters: A_T1=400, A_T2=250, A_T3=30")
+print(f"  Balance: A_same=100, A_diff=20  (RL_med=6.09, Q_med=44.0)")
 print(f"  Discovery: Clearwell behaves as large slow-mixing tank under normal")
 print(f"             conditions, but switches to near-throughflow under crisis.")
 
@@ -109,7 +111,7 @@ innovations = [
     "6. Linear operator feedback + sigmoid gamma(t) modeling human control actions in loss function",
     "7. eta_coag discovered as #1 T3 factor (Robust=0.335) — removal efficiency dominates in stress zone",
     "8. Per-tier A: Clearwell effective area switches from 400 (normal) to 30 (crisis) — 13x regime shift",
-    "9. Final model: 3-parameter CSTR (A_tier) + empirical T1/T2 = R2=0.783, +0.056 vs baseline",
+    "9. Final model: 3-tier CSTR + Balance Detector = R2=0.807, +0.080 vs baseline",
 ]
 for i in innovations:
     print(f"  {i}")

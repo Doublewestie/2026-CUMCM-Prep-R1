@@ -1,5 +1,5 @@
 """
-step2_transform_selection.py — FILT变换方案系统评测 v2
+step2.1++_transform_selection.py — FILT变换方案系统评测 v2
 测试: identity, log, log1p, sqrt + AR阶数扩展 + 额外特征
 """
 
@@ -9,31 +9,8 @@ from sklearn.linear_model import Ridge, RidgeCV
 from sklearn.model_selection import TimeSeriesSplit
 import warnings; warnings.filterwarnings('ignore')
 
-BASE = r'C:\Users\lenovo\2026-CUMCM-Prep-R1'
-for d in os.listdir(os.path.join(BASE, 'data', '2025')):
-    fp = os.path.join(BASE, 'data', '2025', d)
-    if os.path.isdir(fp): raw_dir = fp; break
-
-FILES = sorted([f for f in os.listdir(raw_dir) if f.endswith('.xlsx')])
-RENAME = {'RIVER LEVEL':'RIVER_LEVEL','R/W FLOW':'RW_FLOW','R/W NTU':'RW_NTU','R/W CLR':'RW_CLR','FILT. NTU':'FILT_NTU','C/W WELL LEVEL':'CW_WELL_LEVEL','T/W FLOW':'TW_FLOW','ALUM':'ALUM','NTU':'NTU','R/W PH':'RW_PH'}
-NUM_COLS = ['RIVER_LEVEL','RW_FLOW','RW_NTU','RW_CLR','FILT_NTU','CW_WELL_LEVEL','TW_FLOW','ALUM','NTU']
-
-data_all = []
-for fname in FILES:
-    fp = os.path.join(raw_dir, fname)
-    dfm = pd.read_excel(fp, skiprows=1 if 'Jan' in fname else 0)
-    dfm.rename(columns={k:v for k,v in RENAME.items() if k in dfm.columns}, inplace=True)
-    newcols = []
-    for c in dfm.columns:
-        if isinstance(c, str): newcols.append(c.strip().replace('.','_').replace(' ','_'))
-        else: newcols.append(str(c))
-    dfm.columns = newcols
-    for c in NUM_COLS:
-        if c in dfm.columns: dfm[c] = pd.to_numeric(dfm[c], errors='coerce')
-    data_all.append(dfm)
-
-data = pd.concat(data_all, ignore_index=True)
-data = data.dropna(subset=['FILT_NTU']).reset_index(drop=True)
+from step2_shared import load_raw_filt_data
+data = load_raw_filt_data()
 for c in ['RIVER_LEVEL','RW_NTU','RW_CLR','RW_FLOW','ALUM','CW_WELL_LEVEL','TW_FLOW','NTU']:
     if c in data.columns:
         data[c] = data[c].fillna(data[c].median())

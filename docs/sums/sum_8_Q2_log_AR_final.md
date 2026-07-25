@@ -1,4 +1,4 @@
-# Sum 8: Q2 Final — log(FILT) AR(6) + RidgeCV
+﻿# Sum 8: Q2 Final — log(FILT) AR(6) + RidgeCV
 
 > log(FILT+eps) transform + AR(6) autoregression + RidgeCV with automatic alpha selection | 2026-07-25
 
@@ -67,9 +67,9 @@ Key findings:
 
 | File | Purpose |
 |------|---------|
-| step2_final_model.py | Final model + answer output |
+| step2.5_logar_final.py | Final model + answer output |
 | step2_final_results.json | Structured results (tau, metrics, coefficients) |
-| step2_generate_figures.py | Figure generation script |
+| step2.7_generate_figures.py | Figure generation script |
 | results/figures/q2_pred_vs_actual.png | TS-CV + in-sample scatter |
 | results/figures/q2_residual_diagnostics.png | 6-panel residual diagnostics |
 | results/figures/q2_feature_importance.png | Ridge coefficients |

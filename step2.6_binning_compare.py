@@ -1,5 +1,5 @@
 """
-step2_binning_strategy_compare.py — 方案B(log空间分箱) vs 方案C(原始3-tier) vs 统一log-AR(6)基线
+step2.6_binning_compare.py — 方案B(log空间分箱) vs 方案C(原始3-tier) vs 统一log-AR(6)基线
 全部在TS-CV下评估，最终FILT空间对比R2/RMSE
 分箱切换: 使用上一步真实FILT值(t-1)决定当前步(t)用哪个模型
 """
@@ -10,29 +10,8 @@ from sklearn.linear_model import RidgeCV
 from sklearn.model_selection import TimeSeriesSplit
 import warnings; warnings.filterwarnings('ignore')
 
-BASE = r'C:\Users\lenovo\2026-CUMCM-Prep-R1'
-for d in os.listdir(os.path.join(BASE, 'data', '2025')):
-    fp = os.path.join(BASE, 'data', '2025', d)
-    if os.path.isdir(fp): raw_dir = fp; break
-
-FILES = sorted([f for f in os.listdir(raw_dir) if f.endswith('.xlsx')])
-RENAME = {'RIVER LEVEL':'RIVER_LEVEL','R/W FLOW':'RW_FLOW','R/W NTU':'RW_NTU','R/W CLR':'RW_CLR','FILT. NTU':'FILT_NTU','C/W WELL LEVEL':'CW_WELL_LEVEL','T/W FLOW':'TW_FLOW','ALUM':'ALUM','NTU':'NTU','R/W PH':'RW_PH','PH':'PH','CLR':'CLR','CL2':'CL2','F/RIDE':'F_RIDE','R/W PUMP DUTY':'RW_PUMP_DUTY','T/W PUMP DUTY':'TW_PUMP_DUTY'}
-NUM_COLS = ['RIVER_LEVEL','RW_FLOW','RW_NTU','RW_CLR','RW_PH','FILT_NTU','CW_WELL_LEVEL','TW_FLOW','ALUM','NTU','PH','CLR','CL2']
-data_all = []
-for fname in FILES:
-    fp = os.path.join(raw_dir, fname)
-    dfm = pd.read_excel(fp, skiprows=1 if 'Jan' in fname else 0)
-    dfm.rename(columns={k:v for k,v in RENAME.items() if k in dfm.columns}, inplace=True)
-    newcols = []
-    for c in dfm.columns:
-        if isinstance(c, str): newcols.append(c.strip().replace('.','_').replace(' ','_'))
-        else: newcols.append(str(c))
-    dfm.columns = newcols
-    for c in NUM_COLS:
-        if c in dfm.columns: dfm[c] = pd.to_numeric(dfm[c], errors='coerce')
-    data_all.append(dfm)
-data = pd.concat(data_all, ignore_index=True)
-data = data.dropna(subset=['FILT_NTU']).reset_index(drop=True)
+from step2_shared import load_raw_filt_data
+data = load_raw_filt_data()
 n = len(data)
 EPS = 1e-3
 

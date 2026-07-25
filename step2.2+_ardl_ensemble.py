@@ -1,5 +1,5 @@
 """
-step2_ardl_tau_ensemble.py — 带τ时滞对齐的 ARDL + 模型平均 (Q2最终方案)
+step2.2+_ardl_ensemble.py — 带τ时滞对齐的 ARDL + 模型平均 (Q2最终方案)
 ARDL: log(FILT(t)) = AR(6) + RW_NTU(t-2) + ALUM(t-3) + RW_FLOW(t-1) 
                       + RW_PH(t-1) + RIVER_LEVEL + TW_FLOW(t-1) + seasonal
 模型: RidgeCV + ElasticNet + Huber (3模型平均)
@@ -12,29 +12,8 @@ from sklearn.linear_model import RidgeCV, ElasticNetCV, HuberRegressor
 from sklearn.model_selection import TimeSeriesSplit
 import warnings; warnings.filterwarnings('ignore')
 
-BASE = r'C:\Users\lenovo\2026-CUMCM-Prep-R1'
-for d in os.listdir(os.path.join(BASE, 'data', '2025')):
-    fp = os.path.join(BASE, 'data', '2025', d)
-    if os.path.isdir(fp): raw_dir = fp; break
-
-FILES = sorted([f for f in os.listdir(raw_dir) if f.endswith('.xlsx')])
-RENAME = {'RIVER LEVEL':'RIVER_LEVEL','R/W FLOW':'RW_FLOW','R/W NTU':'RW_NTU','R/W CLR':'RW_CLR','FILT. NTU':'FILT_NTU','C/W WELL LEVEL':'CW_WELL_LEVEL','T/W FLOW':'TW_FLOW','ALUM':'ALUM','NTU':'NTU','R/W PH':'RW_PH'}
-NUM_COLS = ['RIVER_LEVEL','RW_FLOW','RW_NTU','RW_CLR','RW_PH','FILT_NTU','CW_WELL_LEVEL','TW_FLOW','ALUM','NTU']
-data_all = []
-for fname in FILES:
-    fp = os.path.join(raw_dir, fname)
-    dfm = pd.read_excel(fp, skiprows=1 if 'Jan' in fname else 0)
-    dfm.rename(columns={k:v for k,v in RENAME.items() if k in dfm.columns}, inplace=True)
-    newcols = []
-    for c in dfm.columns:
-        if isinstance(c, str): newcols.append(c.strip().replace('.','_').replace(' ','_'))
-        else: newcols.append(str(c))
-    dfm.columns = newcols
-    for c in NUM_COLS:
-        if c in dfm.columns: dfm[c] = pd.to_numeric(dfm[c], errors='coerce')
-    data_all.append(dfm)
-data = pd.concat(data_all, ignore_index=True)
-data = data.dropna(subset=['FILT_NTU']).reset_index(drop=True)
+from step2_shared import load_raw_filt_data
+data = load_raw_filt_data()
 n = len(data)
 EPS = 1e-3
 

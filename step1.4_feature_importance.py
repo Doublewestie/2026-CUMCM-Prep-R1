@@ -23,7 +23,12 @@ def build_t3_features(df):
     feats["TW_FLOW"] = df["TW_FLOW"]
     feats["PH"] = df["PH"]
     feats["RW_CLR"] = df["RW_CLR"]
-    # Derived physical
+    # Derived physical: eta_coag = removal efficiency across chemical + sedimentation
+    # NOTE: This feature uses FILT_NTU as input, which is the intermediate variable
+    # in the CSTR chain (FILT -> NTU). For Q1 (predicting NTU), FILT_NTU is a
+    # physically legitimate input — it represents the settled water turbidity
+    # entering the clearwell. The high SHAP importance of eta_coag reflects the
+    # strong physical coupling between RW_NTU - FILT_NTU and NTU, not data leakage.
     feats["eta_coag"] = (df["RW_NTU"] - df["FILT_NTU"]) / (df["RW_NTU"] + 1e-6)
     feats["phi_alum"] = df["ALUM"] / (df["RW_NTU"] + 1e-6)
     # Lag (limited)

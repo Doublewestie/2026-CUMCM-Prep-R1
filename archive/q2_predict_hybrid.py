@@ -28,8 +28,7 @@ if sys.platform == 'win32':
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 DATA_2025 = os.path.join(OUTPUT_DIR, "clean_data.csv")
-DATA_DIR_2026 = os.path.join(BASE_DIR, "..", "题目", "第一次模拟训练题目",
-                              "B题", "B题附件", "附件2  2026数据集")
+DATA_DIR_2026 = os.path.join(BASE_DIR, "data", "2026")
 
 TIER_THRESHOLDS = [0.05, 0.15]
 AR_ORDER = 6

@@ -1,337 +1,591 @@
 """
-step5.0_ablation.py — Q1 特征层级消融 + Q2 模型消融
-===========================================================
-Q1 消融 (5个问题):
-  ① L2衍生特征增益 (物理公式 vs 原始传感器)
-  ② L3滞后特征增益 (历史信息预测力)
-  ③ L4聚合特征增益 (趋势/波动信息)
-  ④ L2+幂次项增益 (物理泰勒展开价值)
-  ⑤ FILT_NTU 主导性 (核心特征移除→模型崩溃？)
+step5.0_ablation.py — Q1 CSTR 组件消融 + Q2 log-AR 消融 + Feb 2026 预测对比
+===========================================================================
+仅修改此文件，不触碰 step0/step1/step2 原始代码。
 
-Q2 消融 (8组对比, log(FILT) AR):
-  1. log-AR(3) + RidgeCV
-  2. log-AR(6) + RidgeCV
-  3. log-AR(12) + RidgeCV
-  4. FILT-level AR(6) + RidgeCV
-  5. log-AR(6) + ElasticNet
-  6. log-AR(6) + Huber
-  7. log-AR(6) + Ensemble-3
-  8. log-AR(6) + ARDL-tau + Ensemble
+物理背景: 清水池 CSTR 模型
+  NTU(t) = beta(t)*NTU(t-1) + (1-beta(t))*FILT(t)  ✓ FILT(t) 是滤后水入池浓度
+  beta(t) = exp(-2h/theta), theta = A_eff * CW_WELL / TW_FLOW
+
+Q1 CSTR 消融 (6 组):
+  ① Base (3-Tier + Balance): A_T1=400, A_T2=250, A_same=100, A_diff=20
+  ② No_Balance: A_T1=400, A_T2=250, A_T3=30（取消平衡规则）
+  ③ No_Tier: 全量用 A=141.3（即原单 CSTR 基线）
+  ④ Pure_Persistence: NTU(t)=NTU(t-1)，无混合
+  ⑤ Direct_FILT: NTU(t)=FILT(t)，无 CSTR 缓冲
+  ⑥ Mean: 常数均值预测
+
+Q2 log-AR 消融 (7 组, 修复 RidgeCV bug):
+  ① log-AR(3)+RidgeCV  ② log-AR(6)+RidgeCV  ③ log-AR(12)+RidgeCV
+  ④ FILT-level AR(6)+RidgeCV  ⑤ log-AR(6)+ElasticNet  ⑥ log-AR(6)+Huber
+  ⑦ log-AR(6)+Ensemble-3
+
+Q2 Feb 2026 预测对比:
+  Global AR(6) vs T2-only AR(6) vs Hybrid Switching
 
 输出:
-  Q1: output/q1_ablation_results.csv
-  Q2: output/q2_ablation.csv
+  output/q1_cstr_ablation.csv
+  output/q2_logar_ablation.csv
+  output/q2_feb2026_compare.csv
+  results/tables/ablation_summary.csv
 """
 
-import os, json, sys, warnings
+import os, sys, json
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_percentage_error
-from xgboost import XGBRegressor
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.linear_model import RidgeCV, ElasticNetCV, HuberRegressor, LinearRegression
 from step0_config import *
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import warnings; warnings.filterwarnings("ignore")
 
-warnings.filterwarnings("ignore")
+EPS = 1e-6
 
-# ==============================
-# Q1 辅助函数 (复用原有逻辑)
-# ==============================
-def boxcox_inverse(y_trans, lam):
-    y_t = np.asarray(y_trans, dtype=np.float64).copy()
-    if abs(lam) < 1e-6:
-        return np.expm1(y_t)
-    if lam < 0:
-        y_t = np.minimum(y_t, 0.99 / abs(lam))
+# ================================================================
+#  全局: 数据加载 (统一从 clean_data.csv 加载)
+# ================================================================
+
+def load_clean():
+    df = pd.read_csv(OUT_CLEAN_DATA)
+    df["DATE"] = pd.to_datetime(df["DATE"])
+    return df
+
+
+# ================================================================
+#  Q1: CSTR 模型组件消融
+# ================================================================
+
+def cstr_eval(df, A_T1, A_T2, A_T3=30, A_same=None, A_diff=None,
+              RL_med=None, Q_med=None, use_balance=True):
+    """CSTR 段2评估器: NTU(t)=beta*NTU(t-1)+(1-beta)*FILT(t)
+    FILT(t) 为 t 时刻滤后水浊度（清水池入流），物理上可提前获取。
+    """
+    filt = df["FILT_NTU"].values.astype(float)
+    ntu  = df["NTU"].values.astype(float)
+    cw   = df["CW_WELL_LEVEL"].values.astype(float)
+    tw   = df["TW_FLOW"].values.astype(float)
+    rl   = df.get("RIVER_LEVEL", pd.Series(np.full(len(df), np.nan))).values.astype(float)
+    n = len(ntu)
+    pred = np.zeros(n)
+    pred[0] = ntu[0]
+    for t in range(1, n):
+        H = max(cw[t-1], 0.1)
+        Qv = max(tw[t-1], 1.0)
+        ft = filt[t]
+        if ft <= TIER_THRESHOLDS[0]:
+            A0 = A_T1
+        elif ft <= TIER_THRESHOLDS[1]:
+            A0 = A_T2
+        else:
+            if use_balance and A_same is not None and A_diff is not None:
+                rv = rl[t]
+                if not np.isnan(rv) and RL_med is not None and Q_med is not None:
+                    A0 = A_same if (rv - RL_med) * (tw[t] - Q_med) > 0 else A_diff
+                else:
+                    A0 = A_T3
+            else:
+                A0 = A_T3
+        theta = A0 * H / Qv
+        theta = max(theta, 0.02)
+        beta = np.exp(-2.0 / theta)
+        beta = np.clip(beta, 0.001, 0.999)
+        pred[t] = beta * ntu[t-1] + (1 - beta) * ft
+    pred = np.clip(pred, 0, np.inf)
+    ssr = np.sum((ntu - pred) ** 2)
+    sst = np.sum((ntu - ntu.mean()) ** 2)
+    r2 = round(1 - ssr / (sst + EPS), 4)
+    rmse = round(float(np.sqrt(np.mean((ntu - pred) ** 2))), 4)
+    mask_t3 = filt > TIER_THRESHOLDS[1]
+    if mask_t3.sum() >= 10:
+        s_t3 = np.sum((ntu[mask_t3] - pred[mask_t3]) ** 2)
+        t_t3 = np.sum((ntu[mask_t3] - ntu[mask_t3].mean()) ** 2)
+        r2_t3 = round(1 - s_t3 / (t_t3 + EPS), 4)
     else:
-        y_t = np.maximum(y_t, -0.99 / lam)
-    return (y_t * lam + 1) ** (1.0 / lam) - EPS
+        r2_t3 = None
+    return {"R2_all": r2, "RMSE_all": rmse, "R2_T3": r2_t3}
 
 
-def classify_layers(feature_names):
-    layers = {"L1": [], "L2": [], "L2+": [], "L3": [], "L4": [], "L5": []}
-    for i, name in enumerate(feature_names):
-        n = str(name)
-        if n in ["PI_load", "GAMMA_alum", "PSI_alum", "OMEGA_night"]:
-            layers["L5"].append(i); continue
-        if "_lag" in n:
-            layers["L3"].append(i); continue
-        if any(s in n for s in ["_mean", "_std", "_max", "_delta"]):
-            layers["L4"].append(i); continue
-        if n in ["FILT_sq","FILT_sqrt","FILT_cubert","neg_ln_eta","eta_sq",
-                 "rw_ntu_sqrt","rw_ntu_log","alum_inv","alum_sqrt",
-                 "tw_flow_log","dose_ratio_sq","dose_ratio_inv"]:
-            layers["L2+"].append(i); continue
-        if n in ["eta_coag","phi_alum","psi_hyd","hour_sin","hour_cos",
-                 "day_sin","day_cos","is_weekend","is_night"]:
-            layers["L2"].append(i); continue
-        layers["L1"].append(i)
-    return layers
+def run_q1_cstr_ablation(df):
+    """Q1 CSTR 组件消融 (5 组)"""
+    print("\n" + "=" * 65)
+    print("  [Q1] CSTR 组件消融")
+    print("=" * 65)
 
+    # 平衡检测器参数 (复用 step1.7 Phase 5 逻辑)
+    filt = df["FILT_NTU"].values.astype(float)
+    rl = df["RIVER_LEVEL"].values.astype(float)
+    tw = df["TW_FLOW"].values.astype(float)
+    m_t3 = filt > TIER_THRESHOLDS[1]
+    rl_t3 = rl[m_t3][~np.isnan(rl[m_t3])]
+    RL_med = float(np.median(rl_t3)) if len(rl_t3) > 0 else 6.09
+    Q_med = float(np.median(tw[m_t3])) if m_t3.sum() > 0 else 44.0
 
-def run_q1_ablation(X, y, feature_names):
-    """Q1 特征层级消融"""
-    import joblib
-    lam = joblib.load(OUT_LAMBDA_NTU)
-    layers = classify_layers(feature_names)
+    ntu = df["NTU"].values.astype(float)
+    filt = df["FILT_NTU"].values.astype(float)
 
-    def get_indices(layer_keys):
-        idxs = []
-        for k in layer_keys:
-            idxs.extend(layers[k])
-        return sorted(set(idxs))
-
-    L_all_keys = ["L1","L2","L2+","L3","L4","L5"]
-    ablation_configs = [
-        ("L1 only",           get_indices(["L1"])),
-        ("L1+L2",             get_indices(["L1","L2"])),
-        ("L1+L2+L3",          get_indices(["L1","L2","L3"])),
-        ("L1+L2+L3+L4",       get_indices(["L1","L2","L3","L4"])),
-        ("+L5(交互)",         get_indices(["L1","L2","L3","L4","L5"])),
-        ("+L2+(幂次)",       get_indices(L_all_keys)),
+    configs = [
+        ("1.Base(Balance)", {
+            "A_T1": 400, "A_T2": 250, "A_T3": 30,
+            "A_same": 100, "A_diff": 20,
+            "RL_med": RL_med, "Q_med": Q_med,
+            "use_balance": True,
+        }),
+        ("2.No_Balance(A_T3=30)", {
+            "A_T1": 400, "A_T2": 250, "A_T3": 30,
+            "use_balance": False,
+        }),
+        ("3.No_Tier(A=141.3)", {
+            "A_T1": 141.3, "A_T2": 141.3, "A_T3": 141.3,
+            "use_balance": False,
+        }),
+        ("4.Pure_Persistence", {"_mode": "persist"}),
+        ("5.Direct_FILT", {"_mode": "direct"}),
+        ("6.Mean_Pred", {"_mean": True}),
     ]
 
-    # 轻度消融：仅移除 FILT_NTU 原值（滞后/聚合版本仍在）
-    filt_idx = None
-    for i, name in enumerate(feature_names):
-        if str(name) == "FILT_NTU":
-            filt_idx = i; break
-    if filt_idx is not None:
-        no_filt_idx = [i for i in range(len(feature_names)) if i != filt_idx]
-        ablation_configs.append(("remove FILT_NTU(raw)", no_filt_idx))
-
-    # 重度消融：移除全部 FILT_NTU 相关特征（原值+滞后+聚合+幂次）
-    filt_related = []
-    for i, name in enumerate(feature_names):
-        n = str(name).upper()
-        if "FILT" in n:
-            filt_related.append(i)
-    if filt_related:
-        no_filt_all_idx = [i for i in range(len(feature_names)) if i not in filt_related]
-        n_removed = len(filt_related)
-        ablation_configs.append((f"remove ALL_FILT({n_removed})", no_filt_all_idx))
-
-    tscv = TimeSeriesSplit(n_splits=N_SPLITS)
     results = []
-    for config_name, feat_indices in ablation_configs:
-        X_sub = X[:, feat_indices]
-        fold_rmses, fold_r2s, fold_mapes = [], [], []
-        for tr_idx, va_idx in tscv.split(X_sub):
-            m = XGBRegressor(**XGB_PARAMS)
-            m.fit(X_sub[tr_idx], y[tr_idx])
-            pred_t = m.predict(X_sub[va_idx])
-            yva_r = boxcox_inverse(y[va_idx], lam)
-            pred_r = boxcox_inverse(pred_t, lam)
-            fold_rmses.append(np.sqrt(mean_squared_error(yva_r, pred_r)))
-            fold_r2s.append(r2_score(yva_r, pred_r))
-            fold_mapes.append(mean_absolute_percentage_error(yva_r, pred_r) * 100)
-        results.append({
-            "消融配置": config_name, "特征数": len(feat_indices),
-            "RMSE_mean": np.mean(fold_rmses), "RMSE_std": np.std(fold_rmses),
-            "R2_mean": np.mean(fold_r2s), "R2_std": np.std(fold_r2s),
-            "MAPE_mean": np.mean(fold_mapes), "MAPE_std": np.std(fold_mapes),
-        })
-    return pd.DataFrame(results)
+    for name, params in configs:
+        if params.get("_mean"):
+            pred = np.full(len(df), ntu.mean())
+            ssr = np.sum((ntu - pred) ** 2)
+            sst = np.sum((ntu - ntu.mean()) ** 2)
+            r2 = round(1 - ssr / (sst + EPS), 4)
+            rmse = round(float(np.sqrt(np.mean((ntu - pred) ** 2))), 4)
+            r2_t3 = None
+        elif params.get("_mode") == "persist":
+            pred = np.roll(ntu, 1); pred[0] = ntu[0]
+            ssr = np.sum((ntu - pred) ** 2)
+            sst = np.sum((ntu - ntu.mean()) ** 2)
+            r2 = round(1 - ssr / (sst + EPS), 4)
+            rmse = round(float(np.sqrt(np.mean((ntu - pred) ** 2))), 4)
+            mask_t3 = filt > TIER_THRESHOLDS[1]
+            if mask_t3.sum() >= 10:
+                s_t3 = np.sum((ntu[mask_t3] - pred[mask_t3]) ** 2)
+                t_t3 = np.sum((ntu[mask_t3] - ntu[mask_t3].mean()) ** 2)
+                r2_t3 = round(1 - s_t3 / (t_t3 + EPS), 4)
+            else:
+                r2_t3 = None
+        elif params.get("_mode") == "direct":
+            pred = filt.copy()
+            ssr = np.sum((ntu - pred) ** 2)
+            sst = np.sum((ntu - ntu.mean()) ** 2)
+            r2 = round(1 - ssr / (sst + EPS), 4)
+            rmse = round(float(np.sqrt(np.mean((ntu - pred) ** 2))), 4)
+            mask_t3 = filt > TIER_THRESHOLDS[1]
+            if mask_t3.sum() >= 10:
+                s_t3 = np.sum((ntu[mask_t3] - pred[mask_t3]) ** 2)
+                t_t3 = np.sum((ntu[mask_t3] - ntu[mask_t3].mean()) ** 2)
+                r2_t3 = round(1 - s_t3 / (t_t3 + EPS), 4)
+            else:
+                r2_t3 = None
+        else:
+            m = cstr_eval(df, **params)
+            r2, rmse, r2_t3 = m["R2_all"], m["RMSE_all"], m["R2_T3"]
+        results.append({"config": name, "R2_all": r2, "RMSE_all": rmse, "R2_T3": r2_t3})
+        print(f"  {name:<30s}  R2={r2:.4f}  RMSE={rmse:.4f}")
+
+    df_out = pd.DataFrame(results)
+    out_path = os.path.join(OUTPUT_DIR, "q1_cstr_ablation.csv")
+    df_out.to_csv(out_path, index=False, encoding="utf-8-sig")
+    print(f"  [DONE] {out_path}")
+
+    # 柱状图
+    fig, ax = plt.subplots(figsize=(10, 4))
+    names = [r["config"] for r in results]
+    r2s = [r["R2_all"] for r in results]
+    colors = ["#2c7bb6" if "Base" in n else
+              "#fdae61" if "No_Balance" in n else
+              "#fdae61" if "No_Tier" in n else
+              "#969696" for n in names]
+    bars = ax.bar(range(len(names)), r2s, color=colors, alpha=0.85, edgecolor="white")
+    ax.axhline(y=0, color="gray", lw=0.5)
+    ax.set_xticks(range(len(names)))
+    ax.set_xticklabels(names, fontsize=9, rotation=25, ha="right")
+    ax.set_ylabel("R2")
+    ax.set_title("Q1 CSTR Component Ablation")
+    for i, v in enumerate(r2s):
+        ax.text(i, v + 0.015, f"{v:.4f}", ha="center", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUTPUT_DIR, "figures", "q1_cstr_ablation.png"), dpi=150)
+    plt.close(fig)
+    print(f"  [DONE] figures/q1_cstr_ablation.png")
+    return df_out
 
 
+# ================================================================
+#  Q2: log-AR 模型消融
+# ================================================================
 
-# ==============================
-# Q2 log-AR 消融
-# ==============================
-def run_q2_logar_ablation():
-    """Q2 log(FILT) AR(6) 消融: 比较变换方案/模型/阶数/特征"""
-    print("\n[Q2 log-AR Ablation]")
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    
-    # Load data
-    for d in os.listdir(os.path.join(BASE_DIR, 'data', '2025')):
-        fp = os.path.join(BASE_DIR, 'data', '2025', d)
-        if os.path.isdir(fp): raw_dir = fp; break
-    FILES = sorted([f for f in os.listdir(raw_dir) if f.endswith('.xlsx')])
-    RENAME = {'RIVER LEVEL':'RIVER_LEVEL','R/W FLOW':'RW_FLOW','R/W NTU':'RW_NTU','R/W CLR':'RW_CLR',
-              'FILT. NTU':'FILT_NTU','C/W WELL LEVEL':'CW_WELL_LEVEL','T/W FLOW':'TW_FLOW',
-              'ALUM':'ALUM','NTU':'NTU','R/W PH':'RW_PH'}
-    NUM_COLS = ['RIVER_LEVEL','RW_FLOW','RW_NTU','RW_CLR','RW_PH','FILT_NTU','CW_WELL_LEVEL','TW_FLOW','ALUM','NTU']
+def _load_2025_raw():
+    """从原始 Excel 加载 2025 数据（与 q2_final.py 一致）"""
+    for d in os.listdir(os.path.join(BASE_DIR, "data", "2025")):
+        fp = os.path.join(BASE_DIR, "data", "2025", d)
+        if os.path.isdir(fp):
+            raw_dir = fp
+            break
+    FILES = sorted(f for f in os.listdir(raw_dir) if f.endswith(".xlsx"))
+    RENAME = {"RIVER LEVEL":"RIVER_LEVEL","R/W FLOW":"RW_FLOW","R/W NTU":"RW_NTU",
+              "R/W CLR":"RW_CLR","FILT. NTU":"FILT_NTU","C/W WELL LEVEL":"CW_WELL_LEVEL",
+              "T/W FLOW":"TW_FLOW","ALUM":"ALUM","NTU":"NTU","R/W PH":"RW_PH"}
+    NUM_COLS = ["RIVER_LEVEL","RW_FLOW","RW_NTU","RW_CLR","RW_PH",
+                "FILT_NTU","CW_WELL_LEVEL","TW_FLOW","ALUM","NTU"]
     data_all = []
     for fname in FILES:
         fp = os.path.join(raw_dir, fname)
-        dfm = pd.read_excel(fp, skiprows=1 if 'Jan' in fname else 0)
+        dfm = pd.read_excel(fp, skiprows=1 if "Jan" in fname else 0)
         dfm.rename(columns={k:v for k,v in RENAME.items() if k in dfm.columns}, inplace=True)
         newcols = []
         for c in dfm.columns:
-            if isinstance(c, str): newcols.append(c.strip().replace('.','_').replace(' ','_'))
-            else: newcols.append(str(c))
+            s = str(c).strip().replace(".","_").replace(" ","_") if isinstance(c, str) else str(c)
+            newcols.append(s)
         dfm.columns = newcols
         for c in NUM_COLS:
-            if c in dfm.columns: dfm[c] = pd.to_numeric(dfm[c], errors='coerce')
+            if c in dfm.columns:
+                dfm[c] = pd.to_numeric(dfm[c], errors="coerce")
         data_all.append(dfm)
     data = pd.concat(data_all, ignore_index=True)
-    data = data.dropna(subset=['FILT_NTU']).reset_index(drop=True)
-    
-    filt = data['FILT_NTU'].values.astype(float)
+    return data.dropna(subset=["FILT_NTU"]).reset_index(drop=True)
+
+
+def _ar_lags(y, k):
+    X = np.zeros((len(y), k))
+    for lag in range(1, k+1):
+        X[lag:, lag-1] = y[:-lag]
+        X[:lag, lag-1] = y[0]
+    return X
+
+
+def _cv_ridge(Xmat, y_log, start, filt_raw, alphas, tscv):
+    r2s, rms = [], []
+    for tr, va in tscv.split(Xmat[start:]):
+        m = RidgeCV(alphas=alphas).fit(Xmat[start:][tr], y_log[start:][tr])
+        p = np.exp(m.predict(Xmat[start:][va])) - 1e-3
+        t = filt_raw[start:][va]
+        r2s.append(r2_score(t, p))
+        rms.append(np.sqrt(mean_squared_error(t, p)))
+    return np.mean(r2s), np.std(r2s), np.mean(rms)
+
+
+def _cv_en(Xmat, y_log, start, filt_raw, tscv):
+    r2s, rms = [], []
+    for tr, va in tscv.split(Xmat[start:]):
+        m = ElasticNetCV(l1_ratio=0.5, alphas=[0.001, 0.01, 0.1, 1.0],
+                         max_iter=10000, cv=3).fit(Xmat[start:][tr], y_log[start:][tr])
+        p = np.exp(m.predict(Xmat[start:][va])) - 1e-3
+        t = filt_raw[start:][va]
+        r2s.append(r2_score(t, p))
+        rms.append(np.sqrt(mean_squared_error(t, p)))
+    return np.mean(r2s), np.std(r2s), np.mean(rms)
+
+
+def _cv_huber(Xmat, y_log, start, filt_raw, tscv):
+    r2s, rms = [], []
+    for tr, va in tscv.split(Xmat[start:]):
+        m = HuberRegressor(alpha=0.1, max_iter=500).fit(Xmat[start:][tr], y_log[start:][tr])
+        p = np.exp(m.predict(Xmat[start:][va])) - 1e-3
+        t = filt_raw[start:][va]
+        r2s.append(r2_score(t, p))
+        rms.append(np.sqrt(mean_squared_error(t, p)))
+    return np.mean(r2s), np.std(r2s), np.mean(rms)
+
+
+def _cv_ensemble(Xmat, y_log, start, filt_raw, tscv, alphas):
+    r2s, rms = [], []
+    for tr, va in tscv.split(Xmat[start:]):
+        Xv, yv = Xmat[start:], y_log[start:]
+        m1 = RidgeCV(alphas=alphas).fit(Xv[tr], yv[tr])
+        m2 = ElasticNetCV(l1_ratio=0.5, alphas=[0.001, 0.01, 0.1, 1.0],
+                          max_iter=10000, cv=3).fit(Xv[tr], yv[tr])
+        m3 = HuberRegressor(alpha=0.1, max_iter=500).fit(Xv[tr], yv[tr])
+        p = (np.exp(m1.predict(Xv[va])) + np.exp(m2.predict(Xv[va])) + np.exp(m3.predict(Xv[va]))) / 3 - 1e-3
+        t = filt_raw[start:][va]
+        r2s.append(r2_score(t, p))
+        rms.append(np.sqrt(mean_squared_error(t, p)))
+    return np.mean(r2s), np.std(r2s), np.mean(rms)
+
+
+def run_q2_logar_ablation():
+    """Q2 log(FILT) 消融 — 7 组配置, 各用正确回归器"""
+    print("\n" + "=" * 65)
+    print("  [Q2] log-AR 模型消融")
+    print("=" * 65)
+
+    data = _load_2025_raw()
+    filt = data["FILT_NTU"].values.astype(float)
     n = len(filt)
-    EPS = 1e-3
-    log_filt = np.log(filt + EPS)
-    
-    def ar_lags(y, k):
-        X = np.zeros((len(y), k))
-        for lag in range(1, k+1):
-            X[lag:, lag-1] = y[:-lag]
-            X[:lag, lag-1] = y[0]
-        return X
-    
-    def roll_safe(arr, lag):
-        s = np.roll(arr, lag); s[:lag] = arr[0]; return s
-    
+    log_filt = np.log(filt + 1e-3)
+
+    X_log3 = _ar_lags(log_filt, 3)
+    X_log6 = _ar_lags(log_filt, 6)
+    X_log12 = _ar_lags(log_filt, 12)
+    X_filt6 = _ar_lags(filt, 6)
+
     tscv = TimeSeriesSplit(n_splits=5)
     ALPHAS = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
-    
-    # Build external feature matrix
-    for col in ['RIVER_LEVEL','RW_NTU','RW_CLR','RW_FLOW','RW_PH','ALUM','CW_WELL_LEVEL','TW_FLOW','NTU']:
-        if col in data.columns:
-            data[col] = data[col].fillna(data[col].median())
-    
-    rw_ntu = data['RW_NTU'].values.astype(float)
-    rl = data['RIVER_LEVEL'].values.astype(float)
-    tw = data['TW_FLOW'].values.astype(float)
-    alum = data['ALUM'].values.astype(float)
-    
-    X_log6 = ar_lags(log_filt, 6)
-    X_log3 = ar_lags(log_filt, 3)
-    X_filt6 = ar_lags(filt, 6)
-    X_log12 = ar_lags(log_filt, 12)
-    
-    X_ardl = np.column_stack([
-        X_log6,
-        roll_safe(np.log(rw_ntu + EPS), 2),
-        roll_safe(alum, 3),
-        rl, roll_safe(tw, 1),
-    ])
-    X_ardl = np.nan_to_num(X_ardl, nan=0)
-    
-    from sklearn.linear_model import RidgeCV, ElasticNetCV, HuberRegressor
-    
-    def cv_eval(Xmat, y_log, start, is_log=True):
-        r2s, rms = [], []
-        for tr, va in tscv.split(Xmat[start:]):
-            m = RidgeCV(alphas=ALPHAS).fit(Xmat[start:][tr], y_log[start:][tr])
-            if is_log:
-                p = np.exp(m.predict(Xmat[start:][va])) - EPS
-            else:
-                p = m.predict(Xmat[start:][va])
-            t = filt[start:][va]
-            r2s.append(r2_score(t, p))
-            rms.append(np.sqrt(mean_squared_error(t, p)))
-        return np.mean(r2s), np.std(r2s), np.mean(rms)
-    
-    
-    def cv_eval_ensemble(Xmat, y_log, start):
-        r2s, rms = [], []
-        for tr, va in tscv.split(Xmat[start:]):
-            Xv, yv = Xmat[start:], y_log[start:]
-            m1 = RidgeCV(alphas=ALPHAS).fit(Xv[tr], yv[tr])
-            m2 = ElasticNetCV(l1_ratio=0.5, alphas=[0.001, 0.01, 0.1, 1.0], max_iter=10000, cv=3).fit(Xv[tr], yv[tr])
-            m3 = HuberRegressor(alpha=0.1, max_iter=500).fit(Xv[tr], yv[tr])
-            p = (np.exp(m1.predict(Xv[va])) - EPS +
-                 np.exp(m2.predict(Xv[va])) - EPS +
-                 np.exp(m3.predict(Xv[va])) - EPS) / 3
-            t = filt[start:][va]
-            r2s.append(r2_score(t, p))
-            rms.append(np.sqrt(mean_squared_error(t, p)))
-        return np.mean(r2s), np.std(r2s), np.mean(rms)
-    
+
     configs = [
-        ("1.log-AR(3)+RidgeCV", lambda: cv_eval(X_log3, log_filt, 3)),
-        ("2.log-AR(6)+RidgeCV", lambda: cv_eval(X_log6, log_filt, 6)),
-        ("3.log-AR(12)+RidgeCV", lambda: cv_eval(X_log12, log_filt, 12)),
-        ("4.FILT-level AR(6)+RidgeCV", lambda: cv_eval(X_filt6, filt, 6, is_log=False)),
-        ("5.log-AR(6)+ElasticNet", lambda: cv_eval(X_log6, log_filt, 6)),
-        ("6.log-AR(6)+Huber", lambda: cv_eval(X_log6, log_filt, 6)),
-        ("7.log-AR(6)+Ensemble-3", lambda: cv_eval_ensemble(X_log6, log_filt, 6)),
-        ("8.log-AR(6)+ARDL-tau+Ensemble", lambda: cv_eval_ensemble(X_ardl, log_filt, 6)),
+        ("1.log-AR(3)+RidgeCV",  lambda: _cv_ridge(X_log3, log_filt, 3, filt, ALPHAS, tscv)),
+        ("2.log-AR(6)+RidgeCV",  lambda: _cv_ridge(X_log6, log_filt, 6, filt, ALPHAS, tscv)),
+        ("3.log-AR(12)+RidgeCV", lambda: _cv_ridge(X_log12, log_filt, 12, filt, ALPHAS, tscv)),
+        ("4.FILT-level AR(6)",    lambda: _cv_ridge(X_filt6, filt, 6, filt, ALPHAS, tscv)),
+        ("5.log-AR(6)+ElasticNet", lambda: _cv_en(X_log6, log_filt, 6, filt, tscv)),
+        ("6.log-AR(6)+Huber",    lambda: _cv_huber(X_log6, log_filt, 6, filt, tscv)),
+        ("7.log-AR(6)+Ensemble", lambda: _cv_ensemble(X_log6, log_filt, 6, filt, tscv, ALPHAS)),
     ]
-    
+
     results = []
     for name, func in configs:
         r2_m, r2_s, rmse = func()
         results.append({"config": name, "R2_mean": r2_m, "R2_std": r2_s, "RMSE": rmse})
-        print(f"  {name:<40s} R2={r2_m:.4f}+-{r2_s:.4f}  RMSE={rmse:.4f}")
-    
-    df = pd.DataFrame(results)
-    df.to_csv(os.path.join(OUTPUT_DIR, "q2_logar_ablation.csv"), index=False, encoding="utf-8-sig")
-    
-    # Bar chart
+        print(f"  {name:<35s}  R2={r2_m:.4f}+-{r2_s:.4f}  RMSE={rmse:.4f}")
+
+    df_out = pd.DataFrame(results)
+    out_path = os.path.join(OUTPUT_DIR, "q2_logar_ablation.csv")
+    df_out.to_csv(out_path, index=False, encoding="utf-8-sig")
+    print(f"  [DONE] {out_path}")
+
+    # 柱状图
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    configs_s = [r["config"] for r in results]
-    r2s_s = [r["R2_mean"] for r in results]
-    rms_s = [r["RMSE"] for r in results]
-    
-    axes[0].barh(range(len(configs_s)), r2s_s, color='steelblue', alpha=0.85, edgecolor='white')
-    axes[0].set_yticks(range(len(configs_s)))
-    axes[0].set_yticklabels(configs_s, fontsize=9)
-    axes[0].set_xlabel('CV R2')
+    labels = [r["config"] for r in results]
+    r2s = [r["R2_mean"] for r in results]
+    rms = [r["RMSE"] for r in results]
+    axes[0].barh(range(len(labels)), r2s, color="steelblue", alpha=0.85, edgecolor="white")
+    axes[0].set_yticks(range(len(labels)))
+    axes[0].set_yticklabels(labels, fontsize=9)
+    axes[0].set_xlabel("CV R2")
     axes[0].invert_yaxis()
-    axes[0].axvline(x=0, color='gray', linestyle='-', linewidth=0.5)
-    
-    axes[1].barh(range(len(configs_s)), rms_s, color='steelblue', alpha=0.85, edgecolor='white')
-    axes[1].set_yticks(range(len(configs_s)))
-    axes[1].set_yticklabels(configs_s, fontsize=9)
-    axes[1].set_xlabel('CV RMSE')
+    axes[0].axvline(x=0, color="gray", lw=0.5)
+    axes[1].barh(range(len(labels)), rms, color="steelblue", alpha=0.85, edgecolor="white")
+    axes[1].set_yticks(range(len(labels)))
+    axes[1].set_yticklabels(labels, fontsize=9)
+    axes[1].set_xlabel("CV RMSE")
     axes[1].invert_yaxis()
-    
-    plt.tight_layout()
-    fig_dir = os.path.join(OUTPUT_DIR, "figures")
-    os.makedirs(fig_dir, exist_ok=True)
-    fig.savefig(os.path.join(fig_dir, "q2_logar_ablation_bar.png"), dpi=150, bbox_inches='tight')
-    plt.close()
-    print(f"  [DONE] q2_logar_ablation_bar.png saved")
-    return df
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUTPUT_DIR, "figures", "q2_logar_ablation_bar.png"), dpi=150)
+    plt.close(fig)
+    print(f"  [DONE] figures/q2_logar_ablation_bar.png")
+    return df_out
 
 
-# ==============================
-# 主流程
-# ==============================
+# ================================================================
+#  Q2: Feb 2026 预测方法对比
+# ================================================================
+
+def _load_2026_data():
+    """加载 Jan+Feb 2026 数据"""
+    d26 = os.path.join(BASE_DIR, "data", "2026")
+    alt = os.path.join(BASE_DIR, "data", "2025", "附件2  2026数据集")
+    d26_path = d26 if any(f.endswith((".xls",".xlsx")) for f in os.listdir(d26)) else \
+               alt if os.path.isdir(alt) else d26
+    jan_path = os.path.join(d26_path, "2026年1月.xls")
+    feb_path = os.path.join(d26_path, "2026年2月.xls")
+    col_map = {
+        "TIME ": "TIME", "RIVER LEVEL": "RIVER_LEVEL",
+        "R/W PUMP DUTY": "RW_PUMP_DUTY", "R/W FLOW": "RW_FLOW",
+        "R/W NTU": "RW_NTU", "R/W CLR": "RW_CLR", "R/W PH": "RW_PH",
+        "FILT. NTU": "FILT_NTU", "C/W WELL LEVEL": "CW_WELL_LEVEL",
+        "F/RIDE": "F_RIDE", "T/W PUMP DUTY": "TW_PUMP_DUTY",
+        "T/W FLOW": "TW_FLOW", "18ML LEVEL": "18ML_LEVEL",
+        "18ML FLOW": "18ML_FLOW",
+    }
+    df_jan = pd.read_excel(jan_path).rename(columns=col_map)
+    df_feb = pd.read_excel(feb_path).rename(columns=col_map)
+    for c in ["FILT_NTU", "RW_NTU"]:
+        df_jan[c] = pd.to_numeric(df_jan[c], errors="coerce")
+        df_feb[c] = pd.to_numeric(df_feb[c], errors="coerce")
+    return df_jan, df_feb
+
+
+def _train_tier_ar(data, tier_col, tier_id, ar_order=6):
+    """训练单级 AR"""
+    mask = data[tier_col] == tier_id
+    sub = data["FILT_NTU"].values[mask.values]
+    n_t = len(sub)
+    if n_t <= ar_order + 5:
+        return {"coef": np.zeros(ar_order), "intercept": float(np.mean(sub))}
+    X = np.column_stack([np.roll(sub, i) for i in range(1, ar_order + 1)])[ar_order:]
+    y = sub[ar_order:]
+    m = LinearRegression().fit(X, y)
+    return {"coef": m.coef_, "intercept": m.intercept_}
+
+
+def run_q2_feb2026_compare(df_2025):
+    """三种方法在 Feb 2026 数据上的预测对比"""
+    print("\n" + "=" * 65)
+    print("  [Q2] Feb 2026 预测方法对比")
+    print("=" * 65)
+
+    df_jan, df_feb = _load_2026_data()
+    filt = df_2025["FILT_NTU"].values.astype(float)
+    n_all = len(filt)
+    AR_ORDER = 6
+    TAU_RW = 2
+
+    # 准备种子
+    seed = pd.to_numeric(df_jan["FILT_NTU"], errors="coerce").values[-AR_ORDER:].copy()
+    if np.any(np.isnan(seed)):
+        print("  [WARNING] Jan FILT_NTU has NaN in last 6 rows, using fallback")
+        seed = np.full(AR_ORDER, 0.1)
+    feb_actual = pd.to_numeric(df_feb["FILT_NTU"], errors="coerce").values
+    n_pred = len(df_feb)
+    rw_feb = pd.to_numeric(df_feb["RW_NTU"], errors="coerce").values
+
+    # 三级标签
+    tiers = np.ones(n_all, dtype=int)
+    tiers[filt > TIER_THRESHOLDS[0]] = 2
+    tiers[filt > TIER_THRESHOLDS[1]] = 3
+
+    # 训练模型
+    tier_models = {t: _train_tier_ar(df_2025.assign(tier=tiers), "tier", t, AR_ORDER)
+                   for t in [1, 2, 3]}
+
+    # 全局 AR
+    X_all = np.column_stack([np.roll(filt, i) for i in range(1, AR_ORDER + 1)])[AR_ORDER:]
+    y_all = filt[AR_ORDER:]
+    m_global = LinearRegression().fit(X_all, y_all)
+
+    # -------- 预测 ----------
+    def predict_global(seed_vec, steps):
+        vals = seed_vec.copy()
+        out = np.zeros(steps)
+        for t in range(steps):
+            out[t] = m_global.intercept_ + np.dot(m_global.coef_, vals[::-1])
+            vals = np.roll(vals, -1)
+            vals[-1] = out[t]
+        return out
+
+    def predict_t2only(seed_vec, steps):
+        vals = seed_vec.copy()
+        m = tier_models[2]
+        out = np.zeros(steps)
+        for t in range(steps):
+            out[t] = m["intercept"] + np.dot(m["coef"], vals[::-1])
+            vals = np.roll(vals, -1)
+            vals[-1] = out[t]
+        return out
+
+    def predict_hybrid(seed_vec, steps, rw_arr):
+        vals = seed_vec.copy()
+        m = tier_models[2]
+        t2_ss = m["intercept"] / (1 - sum(m["coef"]) + 1e-8)
+        out = np.zeros(steps)
+        for t in range(steps):
+            base = m["intercept"] + np.dot(m["coef"], vals[::-1])
+            correction = max(0, (rw_arr[t - TAU_RW] - 25) / 2000.0) if t >= TAU_RW else 0
+            filt_last = seed[-1] if t == 0 else out[t-1]
+            if filt_last < TIER_THRESHOLDS[0]:
+                scale = 0.3
+            elif filt_last > TIER_THRESHOLDS[1]:
+                scale = 1.3
+            else:
+                scale = 1.0
+            out[t] = base * scale + correction
+            out[t] = np.clip(out[t], 0.01, 0.35)
+            vals = np.roll(vals, -1)
+            vals[-1] = out[t]
+        return out
+
+    pred_g = predict_global(seed, n_pred)
+    pred_t2 = predict_t2only(seed, n_pred)
+    pred_h = predict_hybrid(seed, n_pred, rw_feb)
+
+    valid = ~np.isnan(feb_actual)
+    methods = {
+        "Global AR(6)": pred_g,
+        "T2-only AR(6)": pred_t2,
+        "Hybrid Switching": pred_h,
+    }
+
+    results = []
+    print(f"\n  {'Method':<25s}  {'R2':>8s}  {'RMSE':>8s}  {'MAE':>8s}")
+    print(f"  {'-'*51}")
+    for name, pred in methods.items():
+        pv = pred[valid]
+        av = feb_actual[valid]
+        r2 = r2_score(av, pv)
+        rmse = np.sqrt(mean_squared_error(av, pv))
+        mae = np.mean(np.abs(av - pv))
+        results.append({"method": name, "R2": round(r2, 4),
+                        "RMSE": round(rmse, 4), "MAE": round(mae, 4)})
+        print(f"  {name:<25s}  {r2:>8.4f}  {rmse:>8.4f}  {mae:>8.4f}")
+
+    df_out = pd.DataFrame(results)
+    out_path = os.path.join(OUTPUT_DIR, "q2_feb2026_compare.csv")
+    df_out.to_csv(out_path, index=False, encoding="utf-8-sig")
+    print(f"  [DONE] {out_path}")
+    return df_out
+
+
+# ================================================================
+#  统一消融汇总表
+# ================================================================
+
+def run_ablation_summary(q1_cstr, q2_logar, q2_feb):
+    print("\n" + "=" * 65)
+    print("  [Summary] 统一消融汇总表")
+    print("=" * 65)
+
+    rows = []
+    # Q1 CSTR
+    for _, r in q1_cstr.iterrows():
+        rows.append({"question": "Q1", "ablation": r["config"],
+                      "R2": r["R2_all"], "RMSE": r["RMSE_all"]})
+
+    # Q2 log-AR
+    for _, r in q2_logar.iterrows():
+        rows.append({"question": "Q2.AR", "ablation": r["config"],
+                      "R2": r["R2_mean"], "RMSE": r["RMSE"]})
+
+    # Q2 Feb 2026
+    for _, r in q2_feb.iterrows():
+        rows.append({"question": "Q2.Feb2026", "ablation": r["method"],
+                      "R2": r["R2"], "RMSE": r["RMSE"]})
+
+    df_out = pd.DataFrame(rows)
+    out_path = os.path.join(BASE_DIR, "results", "tables", "ablation_summary.csv")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df_out.to_csv(out_path, index=False, encoding="utf-8-sig")
+
+    print(f"\n  {'Question':<15s} {'Ablation':<35s} {'R2':>8s} {'RMSE':>8s}")
+    print(f"  {'-'*66}")
+    for _, r in df_out.iterrows():
+        print(f"  {r['question']:<15s} {r['ablation']:<35s} {r['R2']:>8.4f} {r['RMSE']:>8.4f}")
+    print(f"\n  [DONE] {out_path}")
+    return df_out
+
+
+# ================================================================
+#  主流程
+# ================================================================
+
 def main():
-    print("=" * 60)
-    print("  step5.0 — 跨题消融实验汇总")
-    print("=" * 60)
+    print("=" * 65)
+    print("  step5.0 — 消融实验 (CSTR 组件 + log-AR + Feb 2026)")
+    print("=" * 65)
 
-    # ---- Q1 消融 ----
-    if os.path.exists(OUT_X_ALL) and os.path.exists(OUT_LAMBDA_NTU):
-        print("\n[Q1] Feature-level ablation")
-        X = np.load(OUT_X_ALL).astype(np.float64)
-        y = np.load(OUT_Y_ALL).astype(np.float64)
-        feature_names = list(np.load(OUT_FEATURE_NAMES, allow_pickle=True))
-        print(f"  X={X.shape}, y={y.shape}")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-        df_q1 = run_q1_ablation(X, y, feature_names)
-        print(f"\n{'='*75}")
-        print(f"  Q1 Ablation ({N_SPLITS}-fold, XGBoost)")
-        print(f"{'='*75}")
-        best_r2 = df_q1["R2_mean"].max()
-        for _, row in df_q1.iterrows():
-            marker = " *" if row["R2_mean"] == best_r2 else ""
-            print(f"  {row['消融配置']:<20s} {row['特征数']:>5d} "
-                  f"RMSE={row['RMSE_mean']:.4f} R2={row['R2_mean']:.4f}{marker}")
-        df_q1.to_csv(os.path.join(OUTPUT_DIR, "q1_ablation_results.csv"),
-                     index=False, encoding="utf-8-sig")
-        print("[step5.0] q1_ablation_results.csv saved")
-    else:
-        print("\n[Q1] Skipped: preprocessed data not found (run step0_preprocess.py first)")
+    # ---- Q1 CSTR 消融 ----
+    df_clean = load_clean()
+    q1_res = run_q1_cstr_ablation(df_clean)
 
-    # ---- Q2 log-AR 消融 (新增) ----
-    print(f"\n{'='*60}")
-    print("  [Q2] log-AR 模型消融")
-    print(f"{'='*60}")
-    df_q2_logar = run_q2_logar_ablation()
-    if df_q2_logar is not None:
-        best_row = df_q2_logar.loc[df_q2_logar["R2_mean"].idxmax()]
-        print(f"\n  Best config: {best_row['config']}  R2={best_row['R2_mean']:.4f}  RMSE={best_row['RMSE']:.4f}")
-    
-    print(f"\n[step5.0] Done.")
+    # ---- Q2 log-AR 消融 ----
+    q2_res = run_q2_logar_ablation()
+
+    # ---- Q2 Feb 2026 预测对比 ----
+    q2_feb_res = run_q2_feb2026_compare(df_clean)
+
+    # ---- 统一汇总 ----
+    summary = run_ablation_summary(q1_res, q2_res, q2_feb_res)
+
+    print(f"\n{'='*65}")
+    print(f"  step5.0 全部完成。")
+    print(f"{'='*65}")
 
 
 if __name__ == "__main__":
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     main()

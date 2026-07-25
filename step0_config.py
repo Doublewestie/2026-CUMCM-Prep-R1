@@ -205,6 +205,31 @@ OUT_TIER2_LOG_PARAMS = os.path.join(OUTPUT_DIR, "tier2_log_params.json")
 TARGET_DATES_2026 = ["2026-02-01", "2026-02-10", "2026-02-20"]
 
 # ==============================
+# Q4 水质风险评价参数
+# ==============================
+Q4_THETA = 0.15                     # 舒适区/应力区分界 (Q2发现)
+Q4_T_HALF_COMFORT = 2               # 舒适区 T_half (步数, 4h)
+Q4_T_HALF_STRESS  = 4               # 应力区 T_half (步数, 8h)
+Q4_NTU_LIMIT = 1.0                  # 国标限值
+Q4_F3_TAU_REF = 3                   # f₃滞后对齐参考滞後 (步数, =6h)
+Q4_ALPHA_ETA = 0.5                  # η_coag趋势加权系数
+Q4_BETA_CSTR = 0.75                 # CSTR段2惯性系数 (用于f₂折扣)
+Q4_BOOTSTRAP_N = 1000               # Bootstrap重采样次数
+Q4_P99_MONTHLY_WINDOW = 3           # 月度滚动P99窗口大小
+
+# Q4 输出文件路径
+OUT_Q4_RISK_SCORES  = os.path.join(OUTPUT_DIR, "q4_risk_scores.csv")
+OUT_Q4_WEIGHTS      = os.path.join(OUTPUT_DIR, "q4_omega_weights.json")
+OUT_Q4_GRADES       = os.path.join(OUTPUT_DIR, "q4_final_grades.npy")
+OUT_Q4_BREAKS_COMF  = os.path.join(OUTPUT_DIR, "q4_breaks_comfort.json")
+OUT_Q4_BREAKS_STR   = os.path.join(OUTPUT_DIR, "q4_breaks_stress.json")
+OUT_Q4_KAPPA        = os.path.join(OUTPUT_DIR, "q4_kappa_report.json")
+OUT_Q4_BOOTSTRAP    = os.path.join(OUTPUT_DIR, "q4_bootstrap_ci.csv")
+OUT_Q4_BACKTEST     = os.path.join(OUTPUT_DIR, "q4_event_backtest.json")
+OUT_Q4_FIG_DIR      = os.path.join(OUTPUT_DIR, "q4_figures")
+OUT_Q4_EXCEL        = os.path.join(OUTPUT_DIR, "q4_results.xlsx")
+
+# ==============================
 # 与队友代码的兼容常量 (step0_preprocess.py 依赖)
 # ==============================
 PUMP_COMPRESS = True

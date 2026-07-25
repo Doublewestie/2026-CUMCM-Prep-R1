@@ -1,0 +1,9 @@
+2026-07-25 Q4 三维风险评分完成 + results 整理
+
+23:50 Q4 step4.0 三维评分实现 融合Q2分区+Q1η_coag 熵权法赋权
+23:52 Q4 step4.1 分区独立Jenks 舒适区3级+应力区3级→统一四级
+23:55 Q4 step4.2 FCE+Bootstrap+事件回溯验证 超标捕获率88.76%
+23:58 Q4 step4.4 2026年3月12条数据分级预测 Grade1:1/Grade2:11
+00:00 Q4 step4.5 7张图+7sheet Excel输出 饼图重叠修复
+00:05 results文件夹整理 Q1-Q4答案+figures+tables 共21图+18表+2Excel+1TXT
+00:10 Agent-memory收尾 提交GitHub

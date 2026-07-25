@@ -102,16 +102,18 @@ FILT_NTU以θ=0.15为界分为舒适区(78%)和应力区(22%)，分区建模。�
 
 ## Stage 4: Q4 水质风险评价
 
+**融合Q1/Q2**: 分区归一化(θ=0.15) + 滞后对齐差分(τ) + CSTRβ₂惯性折扣 + η_coag趋势加权
+
 | # | 任务 | 优先级 | 依赖 | 产出 | 状态 |
 |:---:|------|:---:|------|------|:---:|
-| 4.0 | 三维风险评分：f₁(幅度)+f₂(时长,指数衰减)+f₃(趋势)，熵权法赋权 | P0 | 3.2 | risk_scores.csv | ⏳ |
-| 4.1 | Jenks自然断点法四级划分（2025训练集确定断点k₁,k₂,k₃） | P0 | 4.0 | jenks_breaks.json | ⏳ |
-| 4.2 | 双重验证：FCE模糊综合 vs Jenks → Kappa一致性 | P0 | 4.1 | kappa_report.json | ⏳ |
-| 4.3 | Bootstrap 1000次CI → 等级划分稳定性 | P1 | 4.1 | bootstrap_ci.csv | ⏳ |
-| 4.4 | 3月逐日分类明细 + 各等级天数占比 → Excel | P0 | 4.1 | q4_results.xlsx | ⏳ |
-| 4.5 | 可视化：风险热力图+状态转移矩阵+等级占比饼图 | P0 | 4.1 | q4_figures/ | ⏳ |
+| 4.0 | 三维风险评分：f₁(分区归一化)+f₂(分区T_half+β₂折扣)+f₃(τ对齐+η加权)，熵权法赋权 | P0 | Q2 tau, Q1 β₂ | q4_risk_scores.csv | ✅ |
+| 4.1 | 分区独立Jenks (舒适区3级+应力区3级) → 校准映射统一四级 | P0 | 4.0 | q4_final_grades.npy | ✅ |
+| 4.2 | 双重验证：FCE vs Jenks → Kappa(分层) + Bootstrap 1000次 + 事件回溯验证 | P0 | 4.1 | kappa_report, event_backtest | ✅ |
+| 4.3 | Bootstrap 1000次CI → 等级划分稳定性 | P1 | 4.1 | bootstrap_ci.csv | ✅ |
+| 4.4 | 3月逐日分类明细 + 各等级天数占比 → Excel | P0 | 4.1 | q4_results.xlsx | ✅ |
+| 4.5 | 可视化：7图(风险热力图+转移矩阵+分区联合+维度贡献+事件混淆+NTU双轴) | P0 | 4.1 | q4_figures/ | ✅ |
 
-**DoD**：Kappa>0.7，Bootstrap CI稳定，Excel输出完整
+**DoD**：Kappa>0.7，Bootstrap CI稳定，Excel输出完整，事件回溯验证通过
 
 ---
 

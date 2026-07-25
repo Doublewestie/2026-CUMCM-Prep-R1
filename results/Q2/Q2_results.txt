@@ -1,0 +1,47 @@
+Q2: FILT_NTU 动态时滞建模 — 最终结果
+============================================
+
+模型: log(FILT+1e-3) AR(6) + RidgeCV
+Alpha: 1.0
+
+--- 精度指标 ---
+
+In-sample:
+  R²   = 0.7903
+  RMSE = 0.3023
+
+TimeSeriesSplit 5-fold CV:
+  R²   = 0.6955 ± 0.0838
+  RMSE = 0.2412
+  MAE  = 0.0625
+
+Fold breakdown:
+  Fold 0: R²=0.6100  RMSE=0.3243  MAE=0.0771
+  Fold 1: R²=0.7880  RMSE=0.0186  MAE=0.0085
+  Fold 2: R²=0.6266  RMSE=0.1415  MAE=0.0482
+  Fold 3: R²=0.6469  RMSE=0.1198  MAE=0.0182
+  Fold 4: R²=0.8058  RMSE=0.6018  MAE=0.1608
+
+--- AR(6) Coefficients ---
+  AR-lag-1: +0.860962
+  AR-lag-2: +0.024998
+  AR-lag-3: +0.003558
+  AR-lag-4: -0.010042
+  AR-lag-5: +0.061880
+  AR-lag-6: +0.009179
+
+--- 时滞参数 (Tau) ---
+  RW_NTU -> FILT:  4 小时
+  ALUM   -> FILT:  6 小时
+  RW_FLOW-> FILT:  2 小时
+  RW_PH  -> FILT:  2 小时
+
+--- 双模阈值 ---
+  θ (舒适区/应力区分界) = 0.15
+  舒适区 (FILT < 0.15): 78.0%
+  应力区 (FILT ≥ 0.15): 22.0%
+
+--- CSTR段2 (Q1融合) ---
+  NTU(t) = β₂·NTU(t-1) + (1-β₂)·FILT(t)
+  全量 R² = 0.727  (原始XGBoost：0.34)
+  T3应力区核心因素: η_coag(0.335) > FILT_NTU_mean6(0.242) > TW_FLOW(0.053)

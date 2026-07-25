@@ -22,6 +22,7 @@
 - `Code/docs/sums/sum_4_Q2时滞估计与动态建模实验结果.md` — 旧TCN方案(R²=-0.15)
 - `Code/docs/sums/sum_4b_灰箱模型重构与双模态阈值发现.md` — 双模CSTR重构(队友)
 - **`Code/docs/sums/sum_5_Q1三级分层灰箱建模.md`** — **三级方案（当前, NTU R²=0.727）**
+- **`Code/docs/sums/sum_9_Q4三维风险评分与四级分类.md`** — **Q4三维评分+分区Jenks+事件回溯（已闭环）**
 
 ### 必读（方法论学习，agent面向）
 - `Code/Reference/sums/sum_1_Q1特征筛选学习总结.md`
@@ -38,6 +39,7 @@
 ### 速读（了解近期动态）
 - `Code/docs/logs/latest_7.log` — B线负反馈探索全历程 (2026-07-25)
 - `Code/docs/logs/latest_6.log` — A线CSTR物理模型细化全历程 (2026-07-25)
+- `Code/docs/logs/latest_11.log` — Q4三维风险评分+results整理 (2026-07-25)
 - `Code/docs/logs/latest_4.log` — Q1三级灰箱开发日志
 
 ### 必读（代码现状）
@@ -50,17 +52,16 @@
 
 ### 已完成（按Phase）
 - **Phase 1 (Q1)**: 三级分层灰箱 + A线物理细化已闭环。最终公式 (step1.7_final): 分tier CSTR, A={T1:400, T2:250, T3:30}, 全量 R²=**0.783**。T3特征重要性: η_coag#1(0.335)。阈值 [0.05, 0.15] 不可调。
-- **Phase 2 (Q2)**: 双模阈值诊断已闭环。CCF/MIC/TE三方法全部失效。AR(6) R²=0.52 > TCN R²=-0.15。
-- **Phase 3-5 (Q3/Q4/Q5)**: 代码骨架已创建，内容待实现。
+- **Phase 2 (Q2)**: 双模阈值诊断已闭环。CCF/MIC/TE三方法全部失效。AR(6) R²=0.52 > TCN R²=-0.15。最终: log-AR(6)+RidgeCV, CV R²=0.6955。
+- **Phase 4 (Q4)**: 三维风险评分(融合Q1/Q2) + 分区独立Jenks + 事件回溯验证已闭环。超标捕获率88.76%, 虚警率0%, 提前预警20h。
 
 ### 待完成（按优先级）
-1. **Stage 3**: Q3双源架构+RF元学习器（step3.0-3.5, 全未启动）
-2. **Stage 4**: Q4三维评分+Jenks+双重验证（step4.0-4.5, 全未启动）
-3. **Stage 5**: 跨题消融+TimesFM基线（step5.0-5.1, 部分完成）
-4. **2026年NTU预测**: 归Q3统一交付
+1. **Stage 3**: Q3双源架构+RF元学习器（step3.0-3.5, 已部分实现）
+2. **Stage 5**: 跨题消融+TimesFM基线（step5.0-5.1, 部分完成）
+3. **2026年NTU预测**: 归Q3统一交付
 
 ### 当前聚焦
-**Stage 3 Q3准备** — 基于CSTR段2公式(NTU=β₂·NTU₋₁+(1-β₂)·FILT) + 三级分区策略, 设计双源RF元学习器架构
+**Stage 5 收尾** — 消融汇总 + 论文图表打包
 
 ---
 

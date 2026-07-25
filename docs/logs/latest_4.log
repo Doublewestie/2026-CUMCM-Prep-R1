@@ -1,77 +1,63 @@
-2026-07-24 Q1 三级分层灰箱建模 完成
+2026-07-24 Q2 闭环: 时滞验证 + 全链分析 + 最终结论收尾
 
-13:00 思路确认 + 数据分析
-  - 三级分区: T1(≤0.05,49%) T2(0.05~0.15,30%) T3(>0.15,21%)
-  - 数据验证: FILT_NTU仅4个离散值{0.02,0.03,0.04,0.05}; T3区RW_NTU均值61 vs T1均值37
-  - 相关性: T1中FILT→NTU r=0.16; T2中r=0.006(解耦); T3中r=0.81(强相关)
-  - 操作员反馈: T3中RW_NTU↑→ALUM↑但线性策略R²=0.0067
+14:00 step2.0 三方法时滞估计
+  - CCF/MIC/TE 全部指向 lag=0, 统计方法彻底失效
+  - BUG修复: TE数组长度不匹配, MONTH 0-indexed修正, 融合回退逻辑
+  - 输出: tau_params.json, tau_analysis.csv, tau_comparison.csv
 
-13:30 step1.0_tier_classifier.py — 三级分类器
-  - C1(FILT>0.05?): 逻辑回归, CV Acc=0.69
-  - C2(FILT>0.15?): 逻辑回归, CV Acc=0.79
-  - 整体三分类 Acc=0.58 (T2召回率低0.29 — 过渡区边界模糊)
-  - 输出: tier_params.json (含混淆矩阵/每级占比)
+14:15 step2.1 TCN双模式 (物理先验 vs 自适应)
+  - TCN 4层膨胀卷积 + 因果填充 + 时滞注意力 + 物理Loss + PINN
+  - 物理先验 R2=-0.568 vs 自适应 R2=-0.048 → 自适应优于预设
+  - 无注意力 R2=0.386 为最佳TCN → 注意力在弱信号上过拟合
 
-13:45 step1.1_tier1_noise.py — T1经验频率采样
-  - FILT分布: 0.02(0.4%) 0.03(22.4%) 0.04(51.8%) 0.05(25.4%)
-  - 经验分布JS散度=0.05 (vs高斯0.64) → 经验采样胜出
-  - FILT RMSE=0.0101 (绝对误差极小, R²为负因信号=噪声)
-  - 输出: tier1_report.json
+14:20 step2.2 三个经典基线
+  - AR(6) R2=0.519, 传递函数 R2=0.524, ARMAX R2=0.524
+  - 三基线性能几乎一致, 深度学习全线落败
 
-14:00 step1.2_tier2_experiment.py — T2双路径对比
-  - 路径A(经验分布): FILT RMSE=0.0363 R²=-0.92
-  - 路径B(对数压缩): FILT RMSE=0.0289 R²=-0.24 k=0.10 α=4.99
-  - 路径B(sigmoid变体): FILT RMSE=0.0287 R²=-0.22
-  - 推荐路径B: RMSE比A低20%
-  - 关键: T2中FILT→NTU r≈0, NTU不能通过CSTR段2推导 → 用条件经验分布
-  - 输出: tier2_comparison.json
+14:25 step5.0 消融 → 明确Q2消融迁至step5.0
+  - Q1消融更新: 删ALL_FILT(17列)验证FILT系列占R2的42%
+  - Q2消融7组: 确认物理约束(-0.25R2)和注意力(-0.33R2)为负增益
 
-14:30 step1.3_tier3_greybox.py — T3 CSTR+反馈扫参
-  - 第一次运行: 模型结构错误(CSTR套在FILT上), R²=-5.7
-  - 修正: CSTR应套在NTU上(清水池混合), FILT用AR(6)
-  - 第二次运行: NTU R²=0.36 (用预测FILT递推, 误差累积)
-  - 修正: CSTR段2用真值FILT(t)和真值NTU(t-1) (同时间戳传感器数据可用)
-  - 最终结果:
-    最佳配置: fb=linear, gamma=sigmoid, λ₃=0.5
-    NTU全量R²=0.6475, T3区R²=0.742, RMSE=0.616
-    τ₁权重分布: [0.006, 0.035, 0.362, 0.361, 0.063, 0.092, 0.081] → 峰值4h
-  - 输出: tier3_sweep_results.csv, tier3_best_params.json
+15:00 时序架构对比 (compare_temporal.py)
+  - MLP(无时序) R2=-24.9 << TCN R2=-1868
+  - 结论: 不是TCN没处理好时序, 是梯度下降在近噪声数据上全员崩溃
+  - AR(6) 解析解无此问题
 
-15:00 step1.4_feature_importance.py — T3特征重要性
-  - 仅T3(921条)做SHAP+Permutation
-  - Top 5: η_coag(0.335) > FILT_NTU_mean6(0.242) > TW_FLOW(0.053) > day_cos(0.048) > RIVER_LEVEL(0.041)
-  - η_coag取代FILT_NTU成为应力区#1因素
-  - 输出: tier3_factor_importance.csv
+15:30 全链三层过程分析 (full_chain_analysis.py)
+  - 确认 FILT→NTU 强耦合(r=0.66), R/W→FILT 弱耦合(r=0.20)
+  - 去除效率 η 中位数 99.76%, 仅2.1%样本跌破95%
+  - 清水池缓冲事件分析: 124次FILT>0.3事件, NTU峰值偏差仅0.17
 
-15:15 全量NTU R²验证 (CSTR段2: NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t))
-  - Pure CSTR (A=141.3): NTU全量R²=0.7272, RMSE=0.3445
-  - CSTR+Feedback: R²=0.7287, RMSE=0.3436 (反馈增益微小)
-  - CV 5-fold: R²=0.7318±0.02, RMSE=0.288±0.05
-  - 分级: T1 R²=0.862, T2 R²=0.757, T3 R²=0.668
-  - 对比原XGBoost(101维)R²=0.34 → 提升+0.39
+16:00 预处理对比 (run_q2_preprocess.py)
+  - 标准化R2=-8.46 << 差分R2=-1.68 << 裸log1p R2=-0.005
+  - 标准化和差分都损害模型, 最朴素的做法效果最好
 
-15:20 核心方法论发现:
-  1. CSTR不适用于FILT预测, 适用于NTU预测 — 清水池混合才是CSTR物理场景
-  2. 三级分层的核心价值不在提升R²(因为CSTR段2本身就R²=0.73),
-     而在于: (a)T1/T2不强行建模避免噪声污染; (b)T3特征重要性可揭示滤池穿透时的真实因素
-  3. η_coag为T3区#1因素(Robust=0.335) — 应力区中去除效率决定出水质量
-  4. τ₁=4h通过softmax学习得到, 与物理先验一致
-  5. T1中经验分布(JS=0.05)远优于高斯(JS=0.64) — 数据是离散值非连续分布
+16:30 负反馈解耦 + LRV建模 (q2_final.py)
+  - e_alum 相关性 0.014 < 原始 ALUM 0.047 → 解耦失败
+  - LRV 标准差 0.50 < FILT 0.64 → 信号未放大
+  - LRV+Ridge R2=0.376, 不及 AR(6) 的 0.519
 
-15:30 文档输出:
-  - sum_5: Q1三级分层灰箱完整实验报告
-  - latest_4: Q1三级方案开发日志
-  - PLAN.md: stage1任务更新
+17:00 时滞验证 (verify_delay.py) — Q2 闭环关键
+  - 事件CCF: 仅在FILT>0.3期间做互相关, 按水位分层
+  - 中水位(4-7m)事件CCF峰值在lag=2(4h), r=0.049
+  - CSTR卷积: FILT→NTU清水池延迟≈1步(2h), 最优N=7
+  - 物理先验 RW_NTU=4h 通过验证
+  - 输出: delay_verification.json, figures/delay_verification.png
+
+17:30 文档输出
+  - sum_5: Q2时滞验证与最终结论 (6节, 含时滞验证+预测对比+方法论教训+Q3启示)
+  - latest_4: Q2闭环开发日志
+  - PLAN.md status更新
+  - Commit: feat(q2): final delay verification + full-chain analysis + Q2 closure
 
 变更记录:
-  - step0_config.py: 新增三等级参数和输出路径
-  - q1_data_utils.py: 新建(共享数据加载+灰箱工具函数)
-  - step1.0_tier_classifier.py: 新建(三级分类器)
-  - step1.1_tier1_noise.py: 新建(T1经验频率采样)
-  - step1.2_tier2_experiment.py: 新建(T2双路径对比)
-  - step1.3_tier3_greybox.py: 新建(T3 CSTR+反馈+τ₁可学习+λ₃扫参)
-  - step1.4_feature_importance.py: 新建(T3特征重要性)
-  - run_q1_full.py: 新建(汇总表)
-  - docs/sums/sum_5_Q1三级分层灰箱建模.md: 新建
+  - verify_delay.py: 事件CCF验证, CSTR卷积, 理论停留时间估算
+  - q2_final.py: 负反馈解耦+LRV建模, 输出q2_final_results.json
+  - compare_temporal.py: MLP/TCN/CNN/GRU架构对比
+  - process_analysis.py: 全链三层过程分析
+  - run_q2_preprocess.py: 标准化/差分预处理对比
+  - full_chain_analysis.py: 三层NTU时序+去除效率+清水池缓冲
+  - step2.0/2.1/2.2/2.5/5.0: 已完成
+  - docs/sums/sum_5_Q2时滞验证与最终结论.md: 新建
   - docs/logs/latest_4.log: 新建
-  - PLAN.md: stage1任务更新
+  - PLAN.md: status更新

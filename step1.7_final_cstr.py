@@ -43,10 +43,14 @@ def load_data():
         "CW":   df["CW_WELL_LEVEL"].values.astype(np.float64),
         "Q":    df["TW_FLOW"].values.astype(np.float64),
         "RW_NTU": df["RW_NTU"].values.astype(np.float64),
+        "RL":   df["RIVER_LEVEL"].values.astype(np.float64),
     }
 
 
-def predict_tier_froude(data, A_T1, A_T2, A_T3, k_Fr, gamma_eta=0.0):
+def predict_tier_froude(data, A_T1, A_T2, A_T3, k_Fr, gamma_eta=0.0,
+                        A_T3q=None, RL_med=None, Q_med=None):
+    """A_T3q = [A_rlLo_qLo, A_rlLo_qHi, A_rlHi_qLo, A_rlHi_qHi] for T3 quadrants.
+       If None, uses uniform A_T3."""
     filt = data["FILT"]
     ntu  = data["NTU"]
     cw   = data["CW"]
@@ -66,7 +70,24 @@ def predict_tier_froude(data, A_T1, A_T2, A_T3, k_Fr, gamma_eta=0.0):
         elif ft <= T2_THR:
             A0 = A_T2
         else:
-            A0 = A_T3
+            # T3: use quadrant if available
+            if A_T3q is not None and RL_med is not None and Q_med is not None:
+                rl_val = data.get("RL", np.zeros(len(filt)))
+                rl_t = rl_val[t]
+                q_t = q[t-1] if t >= 1 else q[0]  # use t-1 flow as context
+                if not np.isnan(rl_t):
+                    if rl_t < RL_med and q_t < Q_med:
+                        A0 = A_T3q[0]   # RL_lo x Q_lo
+                    elif rl_t < RL_med and q_t >= Q_med:
+                        A0 = A_T3q[1]   # RL_lo x Q_hi
+                    elif rl_t >= RL_med and q_t < Q_med:
+                        A0 = A_T3q[2]   # RL_hi x Q_lo
+                    else:
+                        A0 = A_T3q[3]   # RL_hi x Q_hi
+                else:
+                    A0 = A_T3  # fallback for NaN RL
+            else:
+                A0 = A_T3
         # Froude dead-zone modulation
         if k_Fr > 0:
             A_eff = A0 / (1.0 + k_Fr * Qv / H ** 1.5)
@@ -84,8 +105,10 @@ def predict_tier_froude(data, A_T1, A_T2, A_T3, k_Fr, gamma_eta=0.0):
     return np.clip(pred, 0.0, np.inf)
 
 
-def eval_config(data, A_T1, A_T2, A_T3, k_Fr, gamma_eta=0.0):
-    pred = predict_tier_froude(data, A_T1, A_T2, A_T3, k_Fr, gamma_eta)
+def eval_config(data, A_T1, A_T2, A_T3, k_Fr, gamma_eta=0.0,
+                A_T3q=None, RL_med=None, Q_med=None):
+    pred = predict_tier_froude(data, A_T1, A_T2, A_T3, k_Fr, gamma_eta,
+                                A_T3q=A_T3q, RL_med=RL_med, Q_med=Q_med)
     ntu  = data["NTU"]
     filt = data["FILT"]
     res = {}
@@ -329,6 +352,88 @@ def main():
           (">" if best_r2R-base_r2R > 0.002 else "<=",
            "ADOPT" if best_r2R-base_r2R > 0.002 else "SKIP"))
 
+    # ==================== Phase 5: Rule-based A_T3 (balance detector) ====================
+    RL_data = data.get("RL", None)
+    mT3_now = data["FILT"] > 0.15
+    if RL_data is not None and mT3_now.sum() >= 50:
+        rl_t3 = RL_data[mT3_now]; rl_t3 = rl_t3[~np.isnan(rl_t3)]
+        q_t3  = data["Q"][mT3_now]
+        RL_med_val = float(np.median(rl_t3)) if len(rl_t3) > 0 else 6.09
+        Q_med_val  = float(np.median(q_t3))
+        print(f"\n{'='*70}")
+        print(f"  Phase 5: Rule-based balance detector (RL_med={RL_med_val:.2f}, Q_med={Q_med_val:.1f})")
+        print(f"  Rule: (RL - RL_med) * (Q - Q_med) > 0 ? A_same : A_diff")
+        print(f"{'='*70}")
+        print(f"  {'A_same':<8} {'A_diff':<8} {'R2_all':<10} {'R2_T3':<10} {'R2_ext':<10}")
+        print(f"  {'-'*46}")
+
+        best_r5, best_as, best_ad = -999, 80, 20
+        for A_s in [60, 70, 80, 90, 100]:
+            for A_d in [15, 20, 25, 30, 35]:
+                p5 = np.zeros(len(data["NTU"])); p5[0] = data["NTU"][0]
+                for t in range(1, len(data["NTU"])):
+                    ft = data["FILT"][t]; H = max(data["CW"][t-1], 0.1); Qv = max(data["Q"][t-1], 1.0)
+                    if ft <= 0.05: A0 = A1_final
+                    elif ft <= 0.15: A0 = A2_final
+                    else:
+                        rv = RL_data[t]; qv = data["Q"][t]
+                        if np.isnan(rv): A0 = A3_best
+                        else: A0 = A_s if (rv - RL_med_val) * (qv - Q_med_val) > 0 else A_d
+                    th = A0 * H / max(Qv, 1); b2 = np.clip(np.exp(-2.0 / max(th, 0.02)), 0.001, 0.999)
+                    p5[t] = b2 * data["NTU"][t-1] + (1 - b2) * ft
+                p5 = np.clip(p5, 0, np.inf)
+                ntu_v = data["NTU"]; filt_v = data["FILT"]
+                ssr = np.sum((ntu_v - p5) ** 2); sst = np.sum((ntu_v - ntu_v.mean()) ** 2)
+                r25 = 1 - ssr / (sst + EPS)
+                m_t3 = filt_v > 0.15; m_ex = filt_v > 0.5
+                ssr3 = np.sum((ntu_v[m_t3] - p5[m_t3]) ** 2); sst3 = np.sum((ntu_v[m_t3] - ntu_v[m_t3].mean()) ** 2)
+                r2t3 = 1 - ssr3 / (sst3 + EPS)
+                ssre = np.sum((ntu_v[m_ex] - p5[m_ex]) ** 2); sste = np.sum((ntu_v[m_ex] - ntu_v[m_ex].mean()) ** 2)
+                r2ex = 1 - ssre / (sste + EPS)
+                m = " ***" if r25 > best_r5 else ""
+                if r25 > best_r5: best_r5 = r25; best_as = A_s; best_ad = A_d
+                print(f"  {A_s:<8} {A_d:<8} {r25:<10.4f} {r2t3:<10.4f} {r2ex:<10.4f}{m}")
+
+        r_qfinal = eval_config(data, A1_final, A2_final, A3_best, k_Fr=0,
+                                A_T3q=None, RL_med=RL_med_val, Q_med=Q_med_val)
+        # Manually compute rule-based
+        p_rb = np.zeros(len(data["NTU"])); p_rb[0] = data["NTU"][0]
+        for t in range(1, len(data["NTU"])):
+            ft = data["FILT"][t]; H = max(data["CW"][t-1], 0.1); Qv = max(data["Q"][t-1], 1.0)
+            if ft <= 0.05: A0 = A1_final
+            elif ft <= 0.15: A0 = A2_final
+            else:
+                rv = RL_data[t]; qv = data["Q"][t]
+                if np.isnan(rv): A0 = A3_best
+                else: A0 = best_as if (rv - RL_med_val) * (qv - Q_med_val) > 0 else best_ad
+            th = A0 * H / max(Qv, 1); b2 = np.clip(np.exp(-2.0 / max(th, 0.02)), 0.001, 0.999)
+            p_rb[t] = b2 * data["NTU"][t-1] + (1 - b2) * ft
+        p_rb = np.clip(p_rb, 0, np.inf)
+        sr = np.sum((ntu_v - p_rb) ** 2); r2_rb = 1 - sr / (sst + EPS)
+        r_qfinal = {"R2_all": round(r2_rb, 4),
+                     "R2_T1": r_p1["R2_T1"], "R2_T2": r_p1["R2_T2"]}
+        m_t3v = data["FILT"] > 0.15; ssr3p = np.sum((ntu_v[m_t3v] - p_rb[m_t3v]) ** 2); sst3p = np.sum((ntu_v[m_t3v] - ntu_v[m_t3v].mean()) ** 2)
+        r_qfinal["R2_T3"] = round(1 - ssr3p / (sst3p + EPS), 4)
+        m_exv = data["FILT"] > 0.5; ssrep = np.sum((ntu_v[m_exv] - p_rb[m_exv]) ** 2); sstep = np.sum((ntu_v[m_exv] - ntu_v[m_exv].mean()) ** 2)
+        r_qfinal["R2_ext"] = round(1 - ssrep / (sstep + EPS), 4)
+
+        print(f"\n  [Phase 5 rule best] A_same={best_as}, A_diff={best_ad}")
+        print(f"    R2_all={r_qfinal['R2_all']}  T1={r_qfinal['R2_T1']}  T2={r_qfinal['R2_T2']}  T3={r_qfinal['R2_T3']}  ext={r_qfinal['R2_ext']}")
+        print(f"    dR2 vs Phase1: full={r_qfinal['R2_all']-r_p1['R2_all']:+.4f}  T3={r_qfinal['R2_T3']-r_p1['R2_T3']:+.4f}  ext={r_qfinal['R2_ext']-r_p1['R2_ext']:+.4f}")
+
+        A_t3_rule = (best_as, best_ad)
+        # Store for save
+        r_best_now = r_qfinal
+        if r_qfinal["R2_all"] > r_p1["R2_all"] + 0.002:
+            print(f"  [ADOPT] Rule-based model improves R2")
+        else:
+            print(f"  [KEEP] No improvement; keep Phase1 A_T3={A3_best}")
+            r_best_now = r_p1
+            A_t3_rule = None
+    else:
+        RL_med_val, Q_med_val = None, None
+        r_qfinal, r_best_now, A_t3_rule = None, r_p1, None
+
     # ==================== Save ====================
     df_out = pd.DataFrame(rows)
     col_order = ["config", "A_T1", "A_T2", "A_T3", "k_Fr",
@@ -339,12 +444,17 @@ def main():
     print(f"\n[DONE] {csv_path}")
 
     best_path = os.path.join(OUTPUT_DIR, "cstr_final_best.json")
+    best_out = {"A_T1": A1_final, "A_T2": A2_final, "A_T3": A3_best,
+                "k_Fr": best_kfr, "gamma_eta": gamma_final}
+    if A_t3_rule is not None:
+        best_out["A_T3_rule"] = {"A_same": A_t3_rule[0], "A_diff": A_t3_rule[1]}
+        best_out["rule"] = "(RL - RL_med)*(Q - Q_med) > 0 -> A_same, else A_diff"
+        best_out["RL_med"] = RL_med_val; best_out["Q_med"] = Q_med_val
+    best_out["R2_all"] = r_best_now["R2_all"]
+    best_out["R2_T1"] = r_best_now["R2_T1"]; best_out["R2_T2"] = r_best_now["R2_T2"]
+    best_out["R2_T3"] = r_best_now["R2_T3"]; best_out["R2_ext"] = r_best_now["R2_ext"]
     with open(best_path, "w", encoding="utf-8") as f:
-        json.dump({"A_T1": A1_final, "A_T2": A2_final, "A_T3": A3_final,
-                   "k_Fr": best_kfr, "gamma_eta": gamma_final,
-                   "R2_all": r_final["R2_all"],
-                   "R2_T1": r_final["R2_T1"], "R2_T2": r_final["R2_T2"],
-                   "R2_T3": r_final["R2_T3"], "R2_ext": r_final["R2_ext"]}, f, indent=2)
+        json.dump(best_out, f, indent=2)
     print(f"[DONE] {best_path}")
 
     # ==================== Summary ====================
@@ -353,19 +463,21 @@ def main():
     print(f"{'='*70}")
     print(f"  Baseline (A=141.3,k=0):           "
           f"R2={r_bl['R2_all']}   T1={r_bl['R2_T1']}  T3={r_bl['R2_T3']}  ext={r_bl['R2_ext']}")
-    print(f"  Phase 1 (分tier,k=0):             "
+    print(f"  Phase 1 (tier A):                 "
           f"R2={r_p1['R2_all']}   T1={r_p1['R2_T1']}  T3={r_p1['R2_T3']}  ext={r_p1['R2_ext']}")
-    print(f"  Phase 3 (tier+Fr,k={best_kfr:.2f}):   "
-          f"R2={r_p3['R2_all']}   T1={r_p3['R2_T1']}  T3={r_p3['R2_T3']}  ext={r_p3['R2_ext']}")
-    print(f"  FINAL (+eta_correction g={gamma_final:+.2f}):  "
-          f"R2={r_final['R2_all']}   T1={r_final['R2_T1']}  T3={r_final['R2_T3']}  ext={r_final['R2_ext']}")
-    print(f"  dR2 (baseline→final):             "
-          f"full={r_final['R2_all'] - r_bl['R2_all']:+.4f}  "
-          f"T1={r_final['R2_T1'] - r_bl['R2_T1']:+.4f}  "
-          f"T3={r_final['R2_T3'] - r_bl['R2_T3']:+.4f}  "
-          f"ext={r_final['R2_ext'] - r_bl['R2_ext']:+.4f}")
-    print(f"  Final params: A1={A1_final}  A2={A2_final}  A3={A3_final}  "
-          f"k_Fr={best_kfr:.2f}  gamma_eta={gamma_final:+.2f}")
+    if r_qfinal is not None:
+        print(f"  Phase 5 (balance rule):           "
+              f"R2={r_qfinal['R2_all']}   T1={r_qfinal['R2_T1']}  T3={r_qfinal['R2_T3']}  ext={r_qfinal['R2_ext']}")
+    print(f"  BEST (adopted):                  "
+          f"R2={r_best_now['R2_all']}   T1={r_best_now['R2_T1']}  T3={r_best_now['R2_T3']}  ext={r_best_now['R2_ext']}")
+    print(f"  dR2 (baseline->best):             "
+          f"full={r_best_now['R2_all'] - r_bl['R2_all']:+.4f}  "
+          f"T1={r_best_now['R2_T1'] - r_bl['R2_T1']:+.4f}  "
+          f"T3={r_best_now['R2_T3'] - r_bl['R2_T3']:+.4f}  "
+          f"ext={r_best_now['R2_ext'] - r_bl['R2_ext']:+.4f}")
+    print(f"  Final params: A1={A1_final}  A2={A2_final}  A3={A3_best}")
+    if A_t3_rule is not None:
+        print(f"  Balance rule: A_same={A_t3_rule[0]}, A_diff={A_t3_rule[1]}  (RL_med={RL_med_val:.2f}, Q_med={Q_med_val:.1f})")
 
     # ==================== Figure ====================
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))

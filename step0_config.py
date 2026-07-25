@@ -12,10 +12,12 @@ import os
 # 路径
 # ==============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR_2025 = os.path.join(BASE_DIR, "..", "题目", "第一次模拟训练题目",
-                              "B题", "B题附件", "附件1  2025数据集")
-DATA_DIR_2026 = os.path.join(BASE_DIR, "..", "题目", "第一次模拟训练题目",
-                              "B题", "B题附件", "附件2  2026数据集")
+_d25 = os.path.join(BASE_DIR, "data", "2025")
+_subdirs = [d for d in os.listdir(_d25) if os.path.isdir(os.path.join(_d25, d))]
+DATA_DIR_2025 = os.path.join(_d25, _subdirs[0]) if _subdirs else _d25
+_d26 = os.path.join(BASE_DIR, "data", "2026")
+_subdirs26 = [d for d in os.listdir(_d26) if os.path.isdir(os.path.join(_d26, d))]
+DATA_DIR_2026 = os.path.join(_d26, _subdirs26[0]) if _subdirs26 else _d26
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 

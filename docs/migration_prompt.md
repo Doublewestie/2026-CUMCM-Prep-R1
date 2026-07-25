@@ -33,6 +33,7 @@
 - `Code/Reference/sums/sum_6_Q1阈值敏感性分析.md`
 - `Code/Reference/sums/sum_7_A线CSTR物理模型细化全历程.md` — **A线终点: 分tier A, R²=0.783**
 - `Code/Reference/sums/sum_8_B线负反馈控制回路探索全历程.md` — **B线终点: 负反馈存在但不可量化建模**
+- `Code/Reference/sums/sum_9_墙模型与RLxQ规则发现全历程.md` — **墙+平衡检测器: R²=0.807, 规则化模型**
 - `Code/Reference/docs/CONSTITUTION.md`
 - `Code/Reference/docs/INDEX.md`
 

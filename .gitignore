@@ -222,5 +222,8 @@ __marimo__/
 
 # Generated output
 output/
+
+# Data files (not tracked)
+data/
 _repo_clone/
 _analyze.py

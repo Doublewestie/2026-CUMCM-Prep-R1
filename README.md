@@ -24,8 +24,8 @@ Code/
 ├── step1.2_tier2_experiment.py      # [新建] Q1: T2双路径对比
 ├── step1.3_tier3_greybox.py         # [新建] Q1: T3 CSTR+反馈+τ₁
 ├── step1.4_feature_importance.py    # [新建] Q1: T3特征重要性
-├── q1_data_utils.py                 # [新建] Q1: 共享工具函数
-├── run_q1_full.py                   # [新建] Q1: 汇总表
+├── step1_shared_utils.py            # [新建] Q1: 共享工具函数
+├── step1_summary_report.py          # [新建] Q1: 汇总表
 ├── step2.*.py                       # [完成] Q2动态时滞建模
 ├── step3.*.py                       # [待实现] Q3混合预测
 ├── step4.*.py                       # [待实现] Q4风险评价

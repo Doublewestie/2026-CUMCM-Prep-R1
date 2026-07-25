@@ -1,7 +1,6 @@
 """
-q2_final.py
-Q2 Final Model — log(FILT+eps) AR(6) + RidgeCV
-===================================================
+step2_final_model.py — Q2 Final Model: log(FILT+eps) AR(6) + RidgeCV
+======================================================================
 Model: log(FILT(t)+eps) = c + sum phi_i * log(FILT(t-i)+eps) + eps(t)
 
 Time-delay parameters (from physics prior + event CCF):
@@ -127,10 +126,10 @@ def main():
         },
     }
     
-    with open(os.path.join(OUTPUT_DIR, "q2_final_results.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(OUTPUT_DIR, "step2_final_results.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     
-    print(f"\n[DONE] q2_final_results.json saved")
+    print(f"\n[DONE] step2_final_results.json saved")
 
 if __name__ == "__main__":
     main()

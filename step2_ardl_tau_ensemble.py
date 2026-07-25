@@ -1,5 +1,5 @@
 """
-q2_ardl_tau.py — 带τ时滞对齐的 ARDL + 模型平均 (Q2最终方案)
+step2_ardl_tau_ensemble.py — 带τ时滞对齐的 ARDL + 模型平均 (Q2最终方案)
 ARDL: log(FILT(t)) = AR(6) + RW_NTU(t-2) + ALUM(t-3) + RW_FLOW(t-1) 
                       + RW_PH(t-1) + RIVER_LEVEL + TW_FLOW(t-1) + seasonal
 模型: RidgeCV + ElasticNet + Huber (3模型平均)

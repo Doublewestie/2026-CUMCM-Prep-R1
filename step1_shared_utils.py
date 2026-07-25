@@ -1,4 +1,4 @@
-"""Shared data utilities for Q1 three-tier scheme"""
+"""step1_shared_utils.py — Shared data utilities for Q1 three-tier scheme"""
 import numpy as np, pandas as pd, os, json, joblib
 from scipy.optimize import minimize
 from step0_config import *

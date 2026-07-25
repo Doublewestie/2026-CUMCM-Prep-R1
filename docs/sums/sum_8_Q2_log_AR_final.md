@@ -67,9 +67,9 @@ Key findings:
 
 | File | Purpose |
 |------|---------|
-| q2_final.py | Final model + answer output |
-| q2_final_results.json | Structured results (tau, metrics, coefficients) |
-| q2_generate_figures.py | Figure generation script |
+| step2_final_model.py | Final model + answer output |
+| step2_final_results.json | Structured results (tau, metrics, coefficients) |
+| step2_generate_figures.py | Figure generation script |
 | results/figures/q2_pred_vs_actual.png | TS-CV + in-sample scatter |
 | results/figures/q2_residual_diagnostics.png | 6-panel residual diagnostics |
 | results/figures/q2_feature_importance.png | Ridge coefficients |

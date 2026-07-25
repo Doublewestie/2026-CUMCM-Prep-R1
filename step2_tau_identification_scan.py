@@ -1,16 +1,14 @@
 """
-q1_q2_physical.py — Q1 物理模型重构 + Q2 结构化时滞辨识
-============================================================
+step2_tau_identification_scan.py — Q2 结构化时滞辨识
+====================================================
 方法论:
-  Q1 段I (化学段):  Langmuir 吸附 + 季节调制 + CLR 竞争
-  Q1 段II (物理段): CSTR 清水池混合
   Q2 伪数据验证:  已知 tau_true 的合成数据 → 验证扫描方法
   Q2 真实时滞辨识: 对真实数据扫描 tau_total
 
 物理公式:
   段I:  eta(t) = eta_max * ALUM(t) / [ALUM(t) + K_d(t) * (1 + beta_c * CLR(t))]
-       K_d(t) = K_d0 * [1 + delta1*sin(day) + delta2*cos(day)]
-       NTU_post_chem = RW_NTU(t-tau_total) * (1 - eta)
+        K_d(t) = K_d0 * [1 + delta1*sin(day) + delta2*cos(day)]
+        NTU_post_chem = RW_NTU(t-tau_total) * (1 - eta)
 
   段II: NTU_post_phys = NTU_post_chem * C_phys
         C_phys = (1 - eta_sed) * exp(-lambda*L)  [经验常数 ~0.005]
@@ -39,19 +37,19 @@ if sys.platform == 'win32':
 warnings.filterwarnings("ignore")
 
 # ================================================================
-#  全局配置 (减少迭代次数以提高速度)
+#  全局配置
 # ================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 CLEAN_DATA = os.path.join(OUTPUT_DIR, "clean_data.csv")
 
-N_RESTARTS = 5          # 多起点次数
-MAX_ITER = 500           # L-BFGS-B 最大迭代
+N_RESTARTS = 5
+MAX_ITER = 500
 DELTA_T = 2.0
 TIER_THRESHOLDS = [0.05, 0.15]
 MAX_SCAN_TAU = 6
-SUBSAMPLE_STEP = 1       # 1=全量, 2=减半
+SUBSAMPLE_STEP = 1
 
 # ================================================================
 #  数据加载
@@ -85,17 +83,15 @@ def load_data():
     return df
 
 # ================================================================
-#  物理模型核心函数 (向量化以提高速度)
+#  物理模型核心函数
 # ================================================================
 def langmuir_eta_vec(alum, clr, K_d0, d1, d2, bc, dsin, dcos, emax):
-    """向量化 Langmuir 吸附效率"""
     K_d = K_d0 * np.maximum(1.0 + d1 * dsin + d2 * dcos, 0.01)
     denom = alum + K_d * (1.0 + bc * np.maximum(clr, 0)) + 1e-8
     eta = emax * alum / denom
     return np.clip(eta, 0.0, emax)
 
 def build_shifted_arrays(rw_ntu, alum, clr, dsin, dcos, tau):
-    """预计算时滞对齐后的数组 (避免优化循环中重复 shift)"""
     n = len(rw_ntu)
     rw_s = np.zeros(n); al_s = np.zeros(n); cl_s = np.zeros(n)
     ds_s = np.zeros(n); dc_s = np.zeros(n)
@@ -117,7 +113,6 @@ def build_shifted_arrays(rw_ntu, alum, clr, dsin, dcos, tau):
 def filt_recurse(beta1, K_d0, d1, d2, bc, emax, cp,
                  rw_aligned, al_aligned, cl_aligned, ds_aligned, dc_aligned,
                  filt_obs, n):
-    """FILT 递推预测 (纯 numpy, 无 Python 循环 — 用 accumulate 加速)"""
     eta = langmuir_eta_vec(al_aligned, cl_aligned, K_d0, d1, d2, bc,
                            ds_aligned, dc_aligned, emax)
     ntu_pp = rw_aligned * (1.0 - eta) * cp
@@ -128,7 +123,6 @@ def filt_recurse(beta1, K_d0, d1, d2, bc, emax, cp,
     return filt_pred, eta, ntu_pp
 
 def ntu_recurse(filt_input, cw, tw, A_cstr, ntu_obs, n):
-    """NTU CSTR 递推"""
     ntu_pred = np.zeros(n)
     ntu_pred[0] = float(ntu_obs[0])
     for t in range(1, n):
@@ -278,21 +272,6 @@ def scan_tau(filt_obs, rw_ntu, alum, clr, dsin, dcos, max_tau=MAX_SCAN_TAU):
     return results
 
 # ================================================================
-#  C_phys 独立估计
-# ================================================================
-def estimate_cphys(df):
-    mask = df["FILT_NTU"] < 0.05
-    sub = df[mask]
-    if len(sub) < 50:
-        return 0.005
-    rw = sub["RW_NTU"].values
-    filt = sub["FILT_NTU"].values
-    eta_g = 0.5
-    est = filt / (rw * (1 - eta_g) + 1e-8)
-    est = est[(est > 0) & (est < 0.1)]
-    return float(np.median(est)) if len(est) > 0 else 0.005
-
-# ================================================================
 #  Q2 分区模型
 # ================================================================
 def two_zone_filt_model(df, tau_star, stress_params):
@@ -325,7 +304,6 @@ def two_zone_filt_model(df, tau_star, stress_params):
             filt_pred[t] = stress_params["beta1"] * filt_pred[t - 1] + (1.0 - stress_params["beta1"]) * ntu_pp
             eta_all[t] = eta_t
         else:
-            # AR(1) with decaying weight
             filt_pred[t] = 0.98 * filt_pred[t - 1] + 0.02 * fo[0]
 
     sm = mask_stress.values
@@ -344,115 +322,20 @@ def two_zone_filt_model(df, tau_star, stress_params):
     }
 
 # ================================================================
-#  Q1 两段灰箱联合优化
-# ================================================================
-def q1_two_segment(df, tau_star, filt_params):
-    n = len(df)
-    rw = df["RW_NTU"].values; al = df["ALUM"].values; cl = df["CLR_raw"].values
-    fo = df["FILT_NTU"].values; no = df["NTU"].values
-    cw = df["CW_WELL_LEVEL"].values; tw = df["TW_FLOW"].values
-    ds = df["day_sin"].values; dc = df["day_cos"].values
-
-    # 获取段1 FILT参数
-    if filt_params is None:
-        fp = {"beta1": 0.60, "K_d0": 0.035, "delta1": 0.0, "delta2": 0.0,
-              "beta_c": 0.0, "eta_max": 0.90, "C_phys": 0.005}
-    else:
-        fp = filt_params
-
-    rw_s, al_s, cl_s, ds_s, dc_s = build_shifted_arrays(rw, al, cl, ds, dc, tau_star)
-
-    # 段1: 递推 FILT
-    filt_pred, eta_vals, _ = filt_recurse(
-        fp["beta1"], fp["K_d0"], fp["delta1"], fp["delta2"],
-        fp["beta_c"], fp["eta_max"], fp["C_phys"],
-        rw_s, al_s, cl_s, ds_s, dc_s, fo, n)
-
-    # 段2: 优化 A_cstr
-    x0 = [120.0]
-    bounds = [(1.0, 500.0)]
-    best_val, best_x = float("inf"), None
-    for r in range(N_RESTARTS):
-        xi = np.array([np.random.uniform(1, 500)]) if r > 0 else np.array(x0)
-        res = minimize(
-            lambda p: _ntu_loss(p[0], no, filt_pred, cw, tw, n),
-            xi, bounds=bounds, method="L-BFGS-B",
-            options={"maxiter": MAX_ITER, "ftol": 1e-8}
-        )
-        if res.fun < best_val:
-            best_val, best_x = res.fun, res.x
-    A_opt = best_x[0] if best_x is not None else 120.0
-
-    ntu_pred = ntu_recurse(filt_pred, cw, tw, A_opt, no, n)
-
-    # 纯外推: 用预测的 FILT 递推 NTU
-    ntu_pure = ntu_recurse(filt_pred, cw, tw, A_opt, np.array([no[0]]), n)
-
-    # 分区评估
-    tier_m = {}
-    for tid in [1, 2, 3]:
-        mask = df["tier"] == tid
-        if mask.sum() > 0:
-            tier_m[f"T{tid}"] = compute_metrics(no[mask.values], ntu_pred[mask.values])
-            tier_m[f"T{tid}"]["n"] = int(mask.sum())
-
-    full_m = compute_metrics(no, ntu_pred)
-    pure_m = compute_metrics(no, ntu_pure)
-    cstr_beta2_median = float(np.median(np.exp(-DELTA_T / np.maximum(
-        A_opt * np.maximum(cw[:-1], 0.1) / np.maximum(tw[:-1], 0.1), 0.01))))
-
-    params_out = {
-        **{k: round(float(v), 6) for k, v in fp.items()},
-        "A_cstr": round(float(A_opt), 4),
-        "tau_star": tau_star,
-        "A_cstr_loss": round(float(best_val), 6),
-    }
-
-    return {
-        "params": params_out,
-        "full_metrics": full_m,
-        "pure_metrics": pure_m,
-        "tier_metrics": tier_m,
-        "filt_pred": filt_pred,
-        "ntu_pred": ntu_pred,
-        "ntu_pure": ntu_pure,
-        "eta_vals": eta_vals,
-        "cstr_beta2_median": cstr_beta2_median,
-    }
-
-def _ntu_loss(A, ntu_obs, filt_pred, cw, tw, n):
-    ntu_p = ntu_recurse(filt_pred, cw, tw, A, np.array([ntu_obs[0]]), n)
-    err = ntu_obs - ntu_p
-    delta = 0.1
-    h = np.where(np.abs(err) < delta, 0.5 * err**2, delta * (np.abs(err) - 0.5 * delta))
-    return np.mean(h)
-
-# ================================================================
 #  主程序
 # ================================================================
 def main():
     t0 = time.time()
     print("=" * 80)
-    print("  Q1 + Q2 Physical Model: Structured Tau Identification + 2-Segment Greybox")
+    print("  Q2 Structured Tau Identification: Pseudo Verification + Real Scan")
     print("=" * 80)
 
     # [1] Data
     print("\n[1/8] Loading data...")
     df = load_data()
-    print(f"  NTU: mean={df['NTU'].mean():.3f}, std={df['NTU'].std():.3f}, "
-          f"skew={df['NTU'].skew():.2f}, max={df['NTU'].max():.2f}")
-    print(f"  FILT: mean={df['FILT_NTU'].mean():.3f}, std={df['FILT_NTU'].std():.3f}, "
-          f"skew={df['FILT_NTU'].skew():.2f}, max={df['FILT_NTU'].max():.2f}")
-    print(f"  R/W NTU: mean={df['RW_NTU'].mean():.1f}, max={df['RW_NTU'].max():.0f}")
 
-    # [2] C_phys
-    print("\n[2/8] Estimating C_phys from comfort zone...")
-    cphys = estimate_cphys(df)
-    print(f"  C_phys = {cphys:.6f}  (physical segment transmission)")
-    print(f"  eta_phys = {1 - cphys:.4f} = {100*(1-cphys):.2f}% removal")
-
-    # [3] Pseudo-data
-    print("\n[3/8] Generating pseudo-data and verifying methodology...")
+    # [2] Pseudo-data
+    print("\n[2/8] Generating pseudo-data and verifying methodology...")
     tau_true = 2
     pseudo = generate_pseudo_data(tau_true=tau_true, n_samples=len(df), seed=42)
     print(f"  Ground truth: tau_total = {tau_true} steps ({tau_true * DELTA_T}h)")
@@ -466,8 +349,8 @@ def main():
     print(f"  tau={best_pseudo['tau']} ({best_pseudo['tau']*DELTA_T}h), R2={best_pseudo['r2']:.4f}, RMSE={best_pseudo['rmse']:.5f}")
     print(f"  Correct identification: {'YES' if correct else 'NO'} (ground truth={tau_true})")
 
-    # [4] Robustness
-    print("\n[4/8] Noise robustness test...")
+    # [3] Robustness
+    print("\n[3/8] Noise robustness test...")
     for sigma in [0.01, 0.05, 0.10]:
         pn = generate_pseudo_data(tau_true=tau_true, n_samples=min(len(df), 2000), seed=42)
         noise = np.random.RandomState(100 + int(sigma * 100)).normal(0, sigma, len(pn["FILT_NTU"]))
@@ -476,8 +359,8 @@ def main():
         bp = max(ps, key=lambda x: x["r2"])
         print(f"  sigma={sigma:.2f}: tau_found={bp['tau']} ({'OK' if bp['tau']==tau_true else 'FAIL'}), R2={bp['r2']:.4f}")
 
-    # [5] Real data tau scan
-    print("\n[5/8] Real data tau identification...")
+    # [4] Real data tau scan
+    print("\n[4/8] Real data tau identification...")
     df_stress = df[df["tier"] == 3].reset_index(drop=True)
     print(f"  Stress zone: {len(df_stress)} samples (FILT >= 0.15)")
     print(f"  FILT->NTU r = {df_stress['FILT_NTU'].corr(df_stress['NTU']):.4f}")
@@ -506,89 +389,35 @@ def main():
     print(f"  Pseudo verification: {'PASS' if correct else 'CHECK'}")
     print(f"  Physics prior: 4h (2 steps) = {'CONSISTENT' if tau_star == 2 else 'DEVIATES by ' + str(abs(tau_star-2)) + ' steps'}")
 
-    # [6] Q2 zone model
-    print("\n[6/8] Q2: Zone-based FILT dynamic model...")
+    # [5] Q2 zone model
+    print("\n[5/8] Q2: Zone-based FILT dynamic model...")
     zr = two_zone_filt_model(df, tau_star, best_stress.get("params"))
     print(f"  Stress zone (n={zr['n_stress']}): R2={zr['stress_r2']:.4f}, RMSE={zr['stress_rmse']:.4f}")
     print(f"  Comfort zone (n={zr['n_comfort']}): AR(1) dominant")
     print(f"  Full: R2={zr['full_r2']:.4f}, RMSE={zr['full_rmse']:.4f}")
 
-    # [7] Q1 full greybox
-    print("\n[7/8] Q1: 2-segment greybox model...")
-    q1 = q1_two_segment(df, tau_star, best_stress.get("params"))
-    print(f"\n  Fitted params:")
-    for k, v in q1["params"].items():
-        print(f"    {k:>15s} = {v}")
-    print(f"\n  CSTR median beta2 = {q1['cstr_beta2_median']:.4f}")
-    print(f"  NTU full R2 = {q1['full_metrics']['r2']:.4f}, RMSE = {q1['full_metrics']['rmse']:.4f}")
-    print(f"  NTU pure-extrapolation R2 = {q1['pure_metrics']['r2']:.4f}, RMSE = {q1['pure_metrics']['rmse']:.4f}")
-    print(f"\n  Tier breakdown:")
-    for tk, tm in sorted(q1["tier_metrics"].items()):
-        print(f"    {tk} (n={tm['n']}): R2={tm['r2']:.4f}, RMSE={tm['rmse']:.4f}")
-
-    # [8] Summary
-    print("\n[8/8] Summary report...")
+    # [6] Save results
+    print("\n[6/8] Saving results...")
     elapsed = time.time() - t0
-    print(f"""
-  ================================================================================
-    Q1 + Q2 RESULTS SUMMARY (elapsed: {elapsed:.1f}s)
-  ================================================================================
 
-    Q1: Effluent NTU Greybox Model
-      Segment I (Chemical, Langmuir):
-        eta_coag = eta_max * ALUM / [ALUM + K_d * (1 + beta_c * CLR)]
-        K_d(t) = K_d0 * [1 + delta1*sin(day) + delta2*cos(day)]
-      Segment II (Physical):
-        FILT(t) = beta1 * FILT(t-1) + (1-beta1) * NTU_post_phys
-        C_phys estimated = {cphys:.5f}
-      CSTR Clearwater Tank:
-        NTU(t) = beta2(t)*NTU(t-1) + (1-beta2(t))*FILT(t)
-        beta2(t) = exp(-2h/theta), theta = A_cstr * CW_WELL / TW_FLOW
-
-      NTU Full R2 = {q1['full_metrics']['r2']:.4f}  |  Pure-Extrapolation R2 = {q1['pure_metrics']['r2']:.4f}
-      T1 R2 = {q1['tier_metrics']['T1']['r2']:.4f}  |  T2 R2 = {q1['tier_metrics']['T2']['r2']:.4f}  |  T3 R2 = {q1['tier_metrics']['T3']['r2']:.4f}
-
-    --------------------------------------------------------------------------------
-    Q2: FILT.NTU Dynamic Time-Delay Identification
-      Method: Physics-structured scanning (Langmuir + C_phys + AR inertia)
-      tau*_total = {tau_star} steps = {tau_star * DELTA_T}h
-      Pseudo-data verification: tau_true={tau_true}, tau_found={best_pseudo['tau']} ({'OK' if correct else 'FAIL'})
-      Stress zone FILT: R2 = {zr['stress_r2']:.4f}, RMSE = {zr['stress_rmse']:.4f}
-      Comfort zone: AR(1) dominant (exogenous signal masked by control loop)
-
-    Key Findings:
-      1. Physics-structured scanning correctly identifies tau_total in pseudo-data
-      2. Real data tau*_total = {tau_star * DELTA_T}h, consistent with engineering design
-      3. C_phys = {cphys:.5f} -> physical segment removal = {100*(1-cphys):.1f}%
-      4. Closed-loop control masks exogenous signals in comfort zone
-  ================================================================================
-""")
-
-    # Save results
     out = {
-        "q1": {
-            "params": q1["params"],
-            "full_r2": q1["full_metrics"]["r2"], "full_rmse": q1["full_metrics"]["rmse"],
-            "pure_r2": q1["pure_metrics"]["r2"], "pure_rmse": q1["pure_metrics"]["rmse"],
-            "tier_r2": {k: q1["tier_metrics"][k]["r2"] for k in q1["tier_metrics"]},
-            "cstr_beta2_median": q1["cstr_beta2_median"],
-        },
-        "q2": {
-            "tau_scan_full": [{k: r[k] for k in ["tau", "tau_hours", "r2", "rmse"]} for r in full_scan],
-            "tau_scan_stress": [{k: r[k] for k in ["tau", "tau_hours", "r2", "rmse"]} for r in stress_scan],
-            "tau_star": tau_star,
-            "tau_star_hours": tau_star * DELTA_T,
-            "pseudo_verify": {"tau_true": tau_true, "tau_found": best_pseudo["tau"], "correct": correct},
-            "stress_zone_r2": zr["stress_r2"], "stress_zone_rmse": zr["stress_rmse"],
-            "full_zone_r2": zr["full_r2"], "full_zone_rmse": zr["full_rmse"],
-        },
-        "cphys_estimate": cphys,
+        "tau_scan_full": [{k: r[k] for k in ["tau", "tau_hours", "r2", "rmse"]} for r in full_scan],
+        "tau_scan_stress": [{k: r[k] for k in ["tau", "tau_hours", "r2", "rmse"]} for r in stress_scan],
+        "tau_star": tau_star,
+        "tau_star_hours": tau_star * DELTA_T,
+        "pseudo_verify": {"tau_true": tau_true, "tau_found": best_pseudo["tau"], "correct": correct},
+        "stress_zone_r2": zr["stress_r2"], "stress_zone_rmse": zr["stress_rmse"],
+        "full_zone_r2": zr["full_r2"], "full_zone_rmse": zr["full_rmse"],
     }
-    op = os.path.join(OUTPUT_DIR, "q1_q2_results.json")
+    op = os.path.join(OUTPUT_DIR, "step2_tau_results.json")
     json.dump(out, open(op, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     print(f"  Results saved to: {op}")
+    print(f"\n  Elapsed: {elapsed:.1f}s")
+    print(f"  Pseudo-data verified: tau_true={tau_true} -> tau_found={best_pseudo['tau']} ({'OK' if correct else 'FAIL'})")
+    print(f"  Real data tau*_total = {tau_star * DELTA_T}h")
+    print(f"  Stress zone FILT R2 = {zr['stress_r2']:.4f}")
+    print(f"  Comfort zone: AR(1) dominant (exogenous signal masked by control loop)")
     print("=" * 80)
-    return df, out
 
 if __name__ == "__main__":
-    df_out, results = main()
+    main()

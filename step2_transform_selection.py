@@ -1,5 +1,5 @@
 """
-q2_transform_test.py — FILT变换方案系统评测 v2
+step2_transform_selection.py — FILT变换方案系统评测 v2
 测试: identity, log, log1p, sqrt + AR阶数扩展 + 额外特征
 """
 

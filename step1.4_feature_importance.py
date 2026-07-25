@@ -6,7 +6,7 @@ Only on T3 (>0.15) subset, with focused physical feature set.
 import numpy as np, pandas as pd, os, warnings
 from sklearn.inspection import permutation_importance
 from xgboost import XGBRegressor
-from q1_data_utils import load_clean_data, add_tier_labels
+from step1_shared_utils import load_clean_data, add_tier_labels
 from step0_config import *
 warnings.filterwarnings("ignore")
 

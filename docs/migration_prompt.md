@@ -42,7 +42,7 @@
 
 ### 必读（代码现状）
 - 运行 `python step1.4_feature_importance.py` 获取T3特征重要性
-- 运行 `python run_q1_full.py` 获取完整汇总表
+- 运行 `python step1_summary_report.py` 获取完整汇总表
 
 ---
 

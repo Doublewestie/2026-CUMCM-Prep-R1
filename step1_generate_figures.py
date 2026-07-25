@@ -1,5 +1,5 @@
 """
-q1_generate_figures.py — Generate Q1 final figures (3-tier CSTR model)
+step1_generate_figures.py — Generate Q1 final figures (3-tier CSTR model)
 Model: NTU(t) = beta2(t)*NTU(t-1) + (1-beta2(t))*FILT(t)
        beta2(t) = exp(-2h/theta), theta = A_tier * CW_WELL(t-1) / TW_FLOW(t-1)
        A_tier = 400 (T1), 250 (T2), 30 (T3)

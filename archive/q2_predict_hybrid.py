@@ -388,7 +388,7 @@ out = pd.DataFrame({
 out_path = os.path.join(OUTPUT_DIR, "q2_feb2026_hybrid_predictions.csv")
 out.to_csv(out_path, index=False, encoding="utf-8-sig")
 
-summary_path = os.path.join(OUTPUT_DIR, "q2_final_metrics.json")
+summary_path = os.path.join(OUTPUT_DIR, "step2_final_metrics.json")
 import json
 json.dump(results_summary, open(summary_path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
 

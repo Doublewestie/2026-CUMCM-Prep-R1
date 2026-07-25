@@ -1,5 +1,5 @@
 """
-q2_optimize_logar.py — log-AR(6) 统一模型优化: 从 0.6955 → 0.70+
+step2_optimize_logar6.py — log-AR(6) 统一模型优化: 从 0.6955 → 0.70+
 测试: 两阶段校正 / 细α网格 / 模型平均 / AR(12) / Huber混合
 """
 

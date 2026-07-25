@@ -1,5 +1,5 @@
 """
-q2_binning_compare.py — 方案B(log空间分箱) vs 方案C(原始3-tier) vs 统一log-AR(6)基线
+step2_binning_strategy_compare.py — 方案B(log空间分箱) vs 方案C(原始3-tier) vs 统一log-AR(6)基线
 全部在TS-CV下评估，最终FILT空间对比R2/RMSE
 分箱切换: 使用上一步真实FILT值(t-1)决定当前步(t)用哪个模型
 """

@@ -1,5 +1,5 @@
 """
-q2_generate_figures.py — Generate Q2 final figures
+step2_generate_figures.py — Generate Q2 final figures
 Model: log(FILT+eps) AR(6) + RidgeCV
 All labels in English
 """

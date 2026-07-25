@@ -8,7 +8,7 @@ import numpy as np, pandas as pd, os, json, joblib, warnings
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
 from sklearn.model_selection import TimeSeriesSplit
-from q1_data_utils import load_clean_data, add_tier_labels
+from step1_shared_utils import load_clean_data, add_tier_labels
 from step0_config import *
 warnings.filterwarnings("ignore")
 

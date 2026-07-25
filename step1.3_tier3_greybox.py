@@ -14,7 +14,7 @@ from scipy.optimize import minimize
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.linear_model import LinearRegression
-from q1_data_utils import load_clean_data, add_tier_labels, compute_metrics
+from step1_shared_utils import load_clean_data, add_tier_labels, compute_metrics
 from step0_config import *
 warnings.filterwarnings("ignore")
 

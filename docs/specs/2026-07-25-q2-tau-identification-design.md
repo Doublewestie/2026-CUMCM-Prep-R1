@@ -142,9 +142,11 @@ flowchart TD
 
 | 文件 | 行数 | 功能 |
 |:---|:---:|------|
-| `Code/q1_q2_physical.py` | ~500 | 物理模型 + 伪数据生成 + τ扫描 + Q1联合优化 |
+| `Code/step1_physical_model_reconstruct.py` | ~430 | Q1: 物理模型重构 (Langmuir + CSTR) |
+| `Code/step2_tau_identification_scan.py` | ~470 | Q2: 伪数据生成 + τ扫描 + 分区模型 |
 | `Code/final_summary.py` | ~230 | 最终汇总报告生成 |
-| `Code/output/q1_q2_results.json` | — | 结构化结果 (Q1+Q2 所有指标) |
+| `Code/output/step1_physical_results.json` | — | Q1物理模型结构化结果 |
+| `Code/output/step2_tau_results.json` | — | Q2时滞辨识结构化结果 |
 | `Code/output/_summary.txt` | — | 完整文字报告 |
 
 ---

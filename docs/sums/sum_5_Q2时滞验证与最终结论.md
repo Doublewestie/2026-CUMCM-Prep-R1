@@ -43,7 +43,7 @@ R/W NTU ──r=0.20──→ FILT.NTU ──r=0.66──→ NTU
 
 三层互相关确认：原水→滤后的信息链被工艺系统切断（r=0.20），滤后→出厂的信息链完整（r=0.66）。
 
-### 2.4 负反馈解耦 + LRV变换（q2_final.py）
+### 2.4 负反馈解耦 + LRV变换（step2_final_model.py）
 
 | 尝试 | 结果 |
 |------|------|
@@ -122,7 +122,7 @@ R/W NTU ──r=0.20──→ FILT.NTU ──r=0.66──→ NTU
 | q2_metrics.csv | TCN完整模型5折指标 |
 | q2_ablation.csv | 7组消融对比 |
 | q2_baseline_comparison.csv | 3个经典基线对比 |
-| q2_final_results.json | 负反馈解耦+LRV建模结论 |
+| step2_final_results.json | 负反馈解耦+LRV建模结论 |
 | delay_verification.json | 事件CCF验证物理先验的证据 |
 | q2_predictions_*.csv | 各模式预测值 |
 | figures/q2_*.png | 全部可视化结果 |

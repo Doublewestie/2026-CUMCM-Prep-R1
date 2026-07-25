@@ -62,7 +62,7 @@
 |------|------|
 | `step0_config.py` | 全局参数: 灰箱配置+三级参数+兼容常量 |
 | `step0_preprocess.py` | 数据清洗(Format A/B), ~12维精简特征 |
-| `q1_data_utils.py` | 共享: 数据加载+灰箱函数+评估工具 |
+| `step1_shared_utils.py` | 共享: 数据加载+灰箱函数+评估工具 |
 
 ### Q1 三级分层灰箱方案 (当前, step1.x)
 
@@ -76,7 +76,7 @@
 | `step1.5_visualization.py` | 三级可视化 + CSTR预测图 (分tier A) | ~135 |
 | `step1.6_cstr_refinement.py` | N-CSTR/延迟/变面积/管壁释放 消融 (探索档案) | ~330 |
 | `step1.7_final_cstr.py` | **分tier A + 四阶段扫参 (当前最优)** | ~400 |
-| `run_q1_full.py` | 全流程汇总表 | ~116 |
+| `step1_summary_report.py` | 全流程汇总表 | ~116 |
 
 **核心结果 (step1.7_final)**: A = {T1:400, T2:250, T3:30}, 全量 R²=**0.7827** (vs 原 XGBoost 0.34, vs CSTR基线 0.727)
 
@@ -110,7 +110,7 @@
 ```
 clean_data.csv (4375行)
      ↓
-  ┌─ q1_data_utils.py ─→ step1.0 → tier_labels.npy
+  ┌─ step1_shared_utils.py ─→ step1.0 → tier_labels.npy
   │       ↓              step1.1 → tier1_report.json
   │    tier_classifier    step1.2 → tier2_comparison.json
   │       ↓              step1.3 → tier3_sweep_results.csv
@@ -135,5 +135,5 @@ clean_data.csv (4375行)
 | F5 | T1分布离散: 仅4个值 {0.02,0.03,0.04,0.05} | 经验频率: 0.4%/22.4%/51.8%/25.4% | step1.1 |
 | F6 | 舒适区r(FILT,NTU)=0.03, 应力区=0.79 | 分层相关分析 | step2.3 |
 | F7 | 操作员策略R²=0.0067(线性不可表示) | OLS分解 | step2.1+ |
-| F8 | Q2最终: log-AR(6)+RidgeCV R2=0.6955 CV | TS-CV, FILT空间 | q2_final.py |
+| F8 | Q2最终: log-AR(6)+RidgeCV R2=0.6955 CV | TS-CV, FILT空间 | step2_final_model.py |
 | F8 | 清池A为regime-dependent: T1→400, T3→30 | 分tier扫参 + 40组联合扫 | step1.7+ |

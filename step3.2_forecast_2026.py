@@ -24,8 +24,10 @@ def load_models():
     with open(os.path.join(MODEL_DIR, "bias_table.json")) as f:
         bt = json.load(f)
     bt = {int(k): {int(kk): vv for kk, vv in v.items()} for k, v in bt.items()}
-    with open(os.path.join(MODEL_DIR, "rf_model.pkl"), "rb") as f:
-        rf = pickle.load(f)
+    with open(os.path.join(MODEL_DIR, "rf_residual.pkl"), "rb") as f:
+        rf_res = pickle.load(f)
+    with open(os.path.join(MODEL_DIR, "rf_physical.pkl"), "rb") as f:
+        rf_phy = pickle.load(f)
     with open(os.path.join(MODEL_DIR, "train_summary.json")) as f:
         s = json.load(f)
     dm = {}
@@ -34,7 +36,7 @@ def load_models():
         if os.path.exists(fp):
             with open(fp, "rb") as f:
                 dm[k] = pickle.load(f)
-    return bt, rf, dm, s
+    return bt, rf_res, rf_phy, dm, s
 
 def load_feb():
     fp = os.path.join(DATA_2026, "2026年2月.xls")
@@ -79,45 +81,48 @@ def reconstruct_filt(feb_df, dl):
     cs = CubicSpline(HOURS_2H, np.array([f2[list(h2).index(float(h))] for h in HOURS_2H]), bc_type="natural")
     return np.clip(cs(Q_HOURS), 0, None)
 
-def predict_2h(f2h, c2h, q2h, init, bt, rf, dm, dc, ds):
+def predict_2h(f2h, c2h, q2h, init, bt, rf_res, rf_phy, dm, dc, ds, w_res, w_phy):
     n = len(f2h)
-    rf_feats = np.zeros((n, 11))
-    for i in range(n):
-        t = get_tier(f2h[i])
-        rf_feats[i] = [i, t, f2h[i], c2h[i], q2h[i], 0, HOURS_2H[i],
-                       np.cos(2*np.pi*HOURS_2H[i]/24),
-                       np.sin(2*np.pi*HOURS_2H[i]/24), dc, ds]
-    pb = np.zeros(n); pb[0] = init
+    # Recursive CSTR
+    cs = np.zeros(n); cs[0] = init
     for i in range(1, n):
         t = get_tier(f2h[i]); b = bt.get(t, {}).get(i, 0)
-        pb[i] = cstr_2h(pb[i-1], f2h[i], c2h[i], q2h[i], b)
+        cs[i] = cstr_2h(cs[i-1], f2h[i], c2h[i], q2h[i], b)
+    # Residual RF
     pr = np.zeros(n); pr[0] = init
     for i in range(1, n):
         t = get_tier(f2h[i]); b = bt.get(t, {}).get(i, 0)
         pr[i] = cstr_2h(pr[i-1], f2h[i], c2h[i], q2h[i], b)
-    rf_feats[1:, 5] = pr[:-1]
-    pr[1:] = np.clip(pr[1:] + rf.predict(rf_feats[1:]), 0, None)
-    pdm = pb.copy()
-    if "Ridge_H1" in dm:
-        fts = np.array([[pb[i], f2h[i], f2h[i], c2h[i], q2h[i], HOURS_2H[i],
-                         np.cos(2*np.pi*HOURS_2H[i]/24),
-                         np.sin(2*np.pi*HOURS_2H[i]/24), dc, ds] for i in range(n)])
-        pdm = np.clip(dm["Ridge_H1"].predict(fts), 0, None)
-    w = s["ensemble_weights"]
-    pe = w["w_base"]*pb + w["w_rf"]*pr + w["w_direct"]*pdm
-    rstd = {1: 0.08, 2: 0.12, 3: 0.20}
+    rf_feats = np.array([[i, get_tier(f2h[i]), f2h[i], c2h[i], q2h[i],
+                          pr[i-1], HOURS_2H[i],
+                          np.cos(2*np.pi*HOURS_2H[i]/24),
+                          np.sin(2*np.pi*HOURS_2H[i]/24), dc, ds] for i in range(1, n)])
+    pr[1:] = np.clip(pr[1:] + rf_res.predict(rf_feats), 0, None)
+    # Physical-embedding RF
+    phy_feats = np.array([[i, get_tier(f2h[i]), f2h[i], c2h[i], q2h[i],
+                           cs[i], cs[max(0,i-1)], HOURS_2H[i],
+                           np.cos(2*np.pi*HOURS_2H[i]/24),
+                           np.sin(2*np.pi*HOURS_2H[i]/24), dc, ds,
+                           np.mean(f2h[:i+1]) if i > 0 else f2h[0]] for i in range(n)])
+    pp = np.clip(rf_phy.predict(phy_feats), 0, None)
+    # Blend
+    pe = w_res * pr + w_phy * pp
+    # MC (simplified)
     mc = np.zeros((N_MC, n))
     mc[:, 0] = np.clip(init + np.random.normal(0, 0.08, N_MC), 0.01, None)
     for i in range(1, n):
         t = get_tier(f2h[i]); b = bt.get(t, {}).get(i, 0)
         mc[:, i] = 0.9 * mc[:, i-1] + 0.1 * f2h[i] + b
-        mc[:, i] = np.clip(mc[:, i] + np.random.normal(0, rstd.get(t, 0.1), N_MC), 0, None)
-    return {"base": pb, "rf": pr, "direct": pdm, "ensemble": pe,
+        mc[:, i] = np.clip(mc[:, i] + np.random.normal(0, {1:0.08,2:0.12,3:0.20}.get(t,0.1), N_MC), 0, None)
+    return {"ensemble": pe, "base": cs, "res_rf": pr, "phy_rf": pp,
             "p50": np.median(mc, 0), "p5": np.percentile(mc, 5, 0), "p95": np.percentile(mc, 95, 0)}
 
 def main():
     global s
-    bt, rf, dm, s = load_models()
+    bt, rf_res, rf_phy, dm, s = load_models()
+    w = s["dual_rf_blend"]
+    w_res, w_phy = w["w_res"], w["w_phy"]
+    print(f"Dual-RF blend: w_res={w_res}, w_phy={w_phy} (CV r2={w['r2_blend']})")
     feb_df = load_feb()
     jan_df = pd.read_excel(os.path.join(DATA_2026, "2026年1月.xls"), engine="xlrd")
     jan_ntu_mean = jan_df["NTU"].mean()
@@ -134,9 +139,9 @@ def main():
             load_2025_date("02-10" if dl == "Feb10" else "02-20")["NTU"].mean())
         doy = {"Feb1": 1, "Feb10": 10, "Feb20": 20}[dl]
         dc, ds = np.cos(2*np.pi*doy/365), np.sin(2*np.pi*doy/365)
-        r2 = predict_2h(f2h_vals, cw2, q2, init, bt, rf, dm, dc, ds)
+        r2 = predict_2h(f2h_vals, cw2, q2, init, bt, rf_res, rf_phy, dm, dc, ds, w_res, w_phy)
         r = {}
-        for k in ["base", "rf", "direct", "ensemble", "p50", "p5", "p95"]:
+        for k in ["base", "res_rf", "phy_rf", "ensemble", "p50", "p5", "p95"]:
             r[k] = np.clip(CubicSpline(HOURS_2H, r2[k], bc_type="natural")(Q_HOURS), 0, None)
         print(f"\n=== {dl} init={init:.4f} ===")
         for i in range(len(Q_HOURS)):

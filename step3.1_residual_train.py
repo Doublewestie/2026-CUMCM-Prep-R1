@@ -158,6 +158,55 @@ def train_rf_residual(data, bias_table):
     return rf, feat_names
 
 # ==============================================================
+# 4b. Train physical-embedding RF (direct NTU prediction)
+# ==============================================================
+def train_physical_rf(data, bias_table):
+    """RF predicting NTU directly with CSTR_pred as a feature."""
+    n = len(data["NTU"])
+    X_list, y_list = [], []
+    for day_start in range(6, n - 24, 12):
+        f_day = data["FILT"][day_start:day_start+12]
+        cw_day = data["CW"][day_start:day_start+12]
+        q_day = data["Q"][day_start:day_start+12]
+        ntu_day = data["NTU"][day_start:day_start+12]
+        qi = [3,4,5,6,7,8,9]
+        f_q3 = np.array([f_day[i] for i in qi])
+        cw_q3 = np.array([cw_day[i] for i in qi])
+        q_q3 = np.array([q_day[i] for i in qi])
+        t_q3 = np.array([ntu_day[i] for i in qi])
+        if np.any(np.isnan(t_q3)): continue
+        # Recursive CSTR
+        cs = np.zeros(7); cs[0] = data["NTU"][day_start] if day_start > 0 else data["NTU"][0]
+        for i in range(1, 7):
+            t = 1 if f_q3[i] <= 0.05 else (2 if f_q3[i] <= 0.15 else 3)
+            cs[i] = cstr_one_step(cs[i-1], f_q3[i], cw_q3[i], q_q3[i], bias_table[t].get(i, 0))
+        dc = data["day_cos"][day_start]; ds = data["day_sin"][day_start]
+        for i in range(7):
+            feat = [i, get_tier(f_q3[i]), f_q3[i], cw_q3[i], q_q3[i],
+                    cs[i], cs[max(0,i-1)],
+                    [7,9,11,13,15,17,19][i],
+                    np.cos(2*np.pi*[7,9,11,13,15,17,19][i]/24),
+                    np.sin(2*np.pi*[7,9,11,13,15,17,19][i]/24),
+                    dc, ds, np.mean(f_q3[:i+1]) if i > 0 else f_q3[0]]
+            X_list.append(feat); y_list.append(t_q3[i])
+    X = np.array(X_list); y = np.array(y_list)
+    valid = ~np.isnan(y) & (y > 0)
+    X, y = X[valid], y[valid]
+    print(f"\n  Physical RF training samples: {len(X)}")
+    rf = RandomForestRegressor(n_estimators=200, max_depth=10, min_samples_leaf=5,
+                               random_state=42, n_jobs=-1)
+    rf.fit(X, y)
+    y_pred = rf.predict(X)
+    print(f"  Physical RF in-sample R2: {r2_score(y, y_pred):.4f}")
+    feat_names = ["step","tier","FILT","CW","Q","CSTR_pred","CSTR_prev",
+                  "hour","hour_cos","hour_sin","day_cos","day_sin","FILT_mean"]
+    fi = sorted(zip(feat_names, rf.feature_importances_), key=lambda x: -x[1])
+    print(f"  Top-5 features:")
+    for n, v in fi[:5]:
+        print(f"    {n}: {v:.4f}")
+    return rf, feat_names
+
+# ==============================================================
 # 5. Train direct multi-step Ridge models
 # ==============================================================
 def train_direct_models(data):
@@ -200,100 +249,94 @@ def train_direct_models(data):
 # ==============================================================
 # 6. Cross-validate ensemble weights
 # ==============================================================
-def find_ensemble_weights(data, bias_table, rf_model, direct_models):
-    """Find optimal ensemble weights via TS-CV on 2025."""
+def build_q3_features(data, day_start, bias_table, rf_res=None, rf_phy=None):
+    """Build Q3 prediction window features and run all models.
+    Returns (true_ntu_7h, base_pred, res_rf_pred, phy_rf_pred, direct_pred)."""
+    f_day = data["FILT"][day_start:day_start+12]
+    cw_day = data["CW"][day_start:day_start+12]
+    q_day = data["Q"][day_start:day_start+12]
+    ntu_day = data["NTU"][day_start:day_start+12]
+    qi = [3,4,5,6,7,8,9]
+    f_q3 = np.array([f_day[i] for i in qi])
+    cw_q3 = np.array([cw_day[i] for i in qi])
+    q_q3 = np.array([q_day[i] for i in qi])
+    t_q3 = np.array([ntu_day[i] for i in qi])
+    true_ntu = t_q3.copy()
+    # Init
+    tr_data = data["NTU"][:day_start]
+    init = np.mean(tr_data[~np.isnan(tr_data)]) if len(tr_data) > 0 else data["NTU"][0]
+    # Recursive CSTR
+    cs = np.zeros(7); cs[0] = init
+    for i in range(1, 7):
+        t = get_tier(f_q3[i]); b = bias_table[t].get(i, 0)
+        cs[i] = cstr_one_step(cs[i-1], f_q3[i], cw_q3[i], q_q3[i], b)
+    # Base = CSTR
+    base_pred = cs.copy()
+    if rf_res is None:
+        return true_ntu, base_pred, None, None, None
+    # Residual RF
+    pr = np.zeros(7); pr[0] = init
+    for i in range(1, 7):
+        t = get_tier(f_q3[i]); b = bias_table[t].get(i, 0)
+        pr[i] = cstr_one_step(pr[i-1], f_q3[i], cw_q3[i], q_q3[i], b)
+    rf_feats = np.array([[i, get_tier(f_q3[i]), f_q3[i], cw_q3[i], q_q3[i],
+                          pr[i-1], [7,9,11,13,15,17,19][i],
+                          np.cos(2*np.pi*[7,9,11,13,15,17,19][i]/24),
+                          np.sin(2*np.pi*[7,9,11,13,15,17,19][i]/24),
+                          data["day_cos"][day_start], data["day_sin"][day_start]]
+                         for i in range(1, 7)])
+    pr[1:] = np.clip(pr[1:] + rf_res.predict(rf_feats), 0, None)
+    res_rf_pred = pr.copy()
+    # Physical-embedding RF
+    dc = data["day_cos"][day_start]; ds = data["day_sin"][day_start]
+    phy_feats = np.array([[i, get_tier(f_q3[i]), f_q3[i], cw_q3[i], q_q3[i],
+                           cs[i], cs[max(0,i-1)],
+                           [7,9,11,13,15,17,19][i],
+                           np.cos(2*np.pi*[7,9,11,13,15,17,19][i]/24),
+                           np.sin(2*np.pi*[7,9,11,13,15,17,19][i]/24),
+                           dc, ds, np.mean(f_q3[:i+1]) if i > 0 else f_q3[0]]
+                          for i in range(7)])
+    phy_pred = np.clip(rf_phy.predict(phy_feats), 0, None)
+    return true_ntu, base_pred, res_rf_pred, phy_pred, None
+
+def find_ensemble_weights(data, bias_table, rf_res, rf_phy, direct_models):
+    """Find optimal ensemble weights via TS-CV on 2025.
+    Tests: base, res_rf, phy_rf, res_rf+phy_rf blend, +direct."""
     n = len(data["NTU"])
-    all_preds = {method: [] for method in ["base", "rf", "direct1", "direct3"]}
-    all_true = []
-
     tscv = TimeSeriesSplit(n_splits=5)
-    fold_weights = []
-
+    fold_results = []
     for fold, (tr_idx, va_idx) in enumerate(tscv.split(np.arange(n))):
-        va_start = max(va_idx[0], 11)  # need 12-step window
-        va_end = va_idx[-1]
-        fold_preds = {m: [] for m in all_preds}
-        fold_true = []
-
+        va_start = max(va_idx[0], 11); va_end = va_idx[-1]
+        p_base, p_res, p_phy, p_direct, targets = [], [], [], [], []
         for day_start in range(va_start, va_end - 12, 12):
-            true_ntu = data["NTU"][day_start + 3:day_start + 10]  # 7:00-19:00
-            if np.any(np.isnan(true_ntu)) or np.any(true_ntu <= 0):
-                continue
+            t, b, r, p, _ = build_q3_features(data, day_start, bias_table, rf_res, rf_phy)
+            if len(t) == 0: continue
+            targets.extend(t.tolist()); p_base.extend(b.tolist())
+            p_res.extend(r.tolist()); p_phy.extend(p.tolist())
+        y = np.array(targets); v = ~np.isnan(y) & (y > 0)
+        y = y[v]; pb = np.array(p_base)[v]; pr = np.array(p_res)[v]; pp = np.array(p_phy)[v]
+        # Find best blend weight between res_rf and phy_rf
+        best_w, best_r2 = 0.5, -999
+        for w in np.arange(0, 1.01, 0.05):
+            pe = w * pr + (1-w) * pp
+            r2e = r2_score(y, pe)
+            if r2e > best_r2: best_r2 = r2e; best_w = w
+        pe_best = best_w * pr + (1-best_w) * pp
+        fold_results.append({"fold": fold, "w_res": best_w, "w_phy": 1-best_w,
+                             "r2_res": r2_score(y, pr), "r2_phy": r2_score(y, pp),
+                             "r2_blend": best_r2})
+        print(f"  Fold {fold}: best w_res={best_w:.2f}, "
+              f"res_r2={r2_score(y,pr):.4f} phy_r2={r2_score(y,pp):.4f} blend_r2={best_r2:.4f}")
 
-            # Initialize from previous day's mean
-            tr_data = data["NTU"][:day_start]
-            init_val = np.mean(tr_data[~np.isnan(tr_data)]) if len(tr_data) > 0 else data["NTU"][0]
-
-            # Base CSTR (bias-corrected)
-            pred_b = np.zeros(12)
-            pred_b[0] = init_val
-            for s in range(1, 12):
-                idx = day_start + s
-                ft = data["FILT"][idx]; tier = get_tier(ft)
-                pred_b[s] = cstr_one_step(pred_b[s-1], ft, data["CW"][idx], data["Q"][idx],
-                                         bias_table[tier].get(s, 0.0))
-            fold_preds["base"].extend(pred_b[3:10].tolist())
-
-            # RF corrected
-            pred_rf = np.zeros(12); pred_rf[0] = init_val
-            for s in range(1, 12):
-                idx = day_start + s
-                ft = data["FILT"][idx]; tier = get_tier(ft)
-                pred_rf[s] = cstr_one_step(pred_rf[s-1], ft, data["CW"][idx], data["Q"][idx],
-                                          bias_table[tier].get(s, 0.0))
-                if s >= 1:
-                    feat = np.array([[s, tier, ft, data["CW"][idx], data["Q"][idx],
-                                      pred_rf[s-1], data["hour"][idx],
-                                      np.cos(2*np.pi*data["hour"][idx]/24),
-                                      np.sin(2*np.pi*data["hour"][idx]/24),
-                                      data["day_cos"][idx], data["day_sin"][idx]]])
-                    delta = rf_model.predict(feat)[0]
-                    pred_rf[s] = np.clip(pred_rf[s] + delta, 0, None)
-            fold_preds["rf"].extend(pred_rf[3:10].tolist())
-
-            # Direct models
-            for H, key in [(1, "direct1"), (3, "direct3")]:
-                for q3_step, s in enumerate([3, 4, 5, 6, 7, 8, 9]):
-                    t_h = day_start + s
-                    if t_h + H < n:
-                        feat = np.array([[data["NTU"][t_h], data["FILT"][t_h], data["FILT"][t_h+H],
-                                          data["CW"][t_h+H], data["Q"][t_h+H],
-                                          data["hour"][t_h+H],
-                                          np.cos(2*np.pi*data["hour"][t_h+H]/24),
-                                          np.sin(2*np.pi*data["hour"][t_h+H]/24),
-                                          data["day_cos"][t_h+H], data["day_sin"][t_h+H]]])
-                        pred_h = direct_models[f"Ridge_H{H}"].predict(feat)[0]
-                    else:
-                        pred_h = fold_preds["base"][-1] if fold_preds["base"] else 0
-                    fold_preds[key].append(pred_h)
-
-            fold_true.extend(true_ntu.tolist())
-
-        if len(fold_true) > 10:
-            # Find optimal weights via grid search
-            best_w, best_r2 = None, -999
-            for w1 in np.arange(0, 1.1, 0.2):
-                for w2 in np.arange(0, 1.1 - w1, 0.2):
-                    w3 = 1 - w1 - w2
-                    if w3 < 0: continue
-                    ens = w1 * np.array(fold_preds["base"]) + \
-                          w2 * np.array(fold_preds["rf"]) + \
-                          w3 * np.array(fold_preds["direct1"]) if len(fold_preds["direct1"]) == len(fold_preds["base"]) else \
-                          np.array(fold_preds["base"])
-                    r2_e = r2_score(fold_true, ens)
-                    if r2_e > best_r2:
-                        best_r2 = r2_e; best_w = (w1, w2, w3)
-            fold_weights.append({"fold": fold, "w_base": best_w[0], "w_rf": best_w[1],
-                                 "w_direct": best_w[2], "r2": best_r2})
-
-    avg_w = {k: np.mean([f[k] for f in fold_weights]) for k in ["w_base", "w_rf", "w_direct"]}
-    print(f"\n  Optimal ensemble weights:")
-    print(f"    w_base = {avg_w['w_base']:.3f}")
-    print(f"    w_rf   = {avg_w['w_rf']:.3f}")
-    print(f"    w_direct = {avg_w['w_direct']:.3f}")
-    print(f"    Avg fold R2 = {np.mean([f['r2'] for f in fold_weights]):.4f}")
-
-    return avg_w, fold_weights
+    avg_w_res = np.mean([f["w_res"] for f in fold_results])
+    avg_r2_res = np.mean([f["r2_res"] for f in fold_results])
+    avg_r2_phy = np.mean([f["r2_phy"] for f in fold_results])
+    avg_r2_blend = np.mean([f["r2_blend"] for f in fold_results])
+    print(f"\n  Average: w_res={avg_w_res:.3f}, "
+          f"res_r2={avg_r2_res:.4f}, phy_r2={avg_r2_phy:.4f}, blend_r2={avg_r2_blend:.4f}")
+    return {"w_res": round(avg_w_res, 3), "w_phy": round(1-avg_w_res, 3),
+            "r2_res": round(avg_r2_res, 4), "r2_phy": round(avg_r2_phy, 4),
+            "r2_blend": round(avg_r2_blend, 4)}, fold_results
 
 # ==============================================================
 # 7. Main
@@ -319,19 +362,25 @@ def main():
     print(f"\n{'='*60}")
     print(f"  Phase 2: RF residual model")
     print(f"{'='*60}")
-    rf_model, feat_names = train_rf_residual(data, bias_table)
+    rf_res, feat_names = train_rf_residual(data, bias_table)
 
-    # ---- 3. Direct models ----
+    # ---- 3. Physical-embedding RF ----
     print(f"\n{'='*60}")
-    print(f"  Phase 3: Direct multi-step models")
+    print(f"  Phase 3: Physical-embedding RF")
+    print(f"{'='*60}")
+    rf_phy, phy_feat_names = train_physical_rf(data, bias_table)
+
+    # ---- 4. Direct models ----
+    print(f"\n{'='*60}")
+    print(f"  Phase 4: Direct multi-step models")
     print(f"{'='*60}")
     direct_models, direct_results = train_direct_models(data)
 
-    # ---- 4. Ensemble weights ----
+    # ---- 5. Dual-RF blend weights ----
     print(f"\n{'='*60}")
-    print(f"  Phase 4: Cross-validation ensemble weights")
+    print(f"  Phase 5: Dual-RF blend weight via CV")
     print(f"{'='*60}")
-    avg_w, fold_weights = find_ensemble_weights(data, bias_table, rf_model, direct_models)
+    blend_w, fold_results = find_ensemble_weights(data, bias_table, rf_res, rf_phy, direct_models)
 
     # ---- 5. Baseline comparison ----
     print(f"\n{'='*60}")
@@ -362,8 +411,10 @@ def main():
     with open(os.path.join(model_dir, "bias_table.json"), "w") as f:
         json.dump(bias_table, f, indent=2)
 
-    with open(os.path.join(model_dir, "rf_model.pkl"), "wb") as f:
-        pickle.dump(rf_model, f)
+    with open(os.path.join(model_dir, "rf_residual.pkl"), "wb") as f:
+        pickle.dump(rf_res, f)
+    with open(os.path.join(model_dir, "rf_physical.pkl"), "wb") as f:
+        pickle.dump(rf_phy, f)
 
     for k, v in direct_models.items():
         with open(os.path.join(model_dir, f"{k}.pkl"), "wb") as f:
@@ -371,13 +422,14 @@ def main():
 
     train_summary = {
         "bias_table": bias_table,
-        "rf_feature_names": feat_names,
+        "rf_residual_feature_names": feat_names,
+        "rf_physical_feature_names": phy_feat_names,
         "direct_models": {k: direct_results[int(k.split("_H")[1])] for k in direct_models},
-        "ensemble_weights": avg_w,
-        "fold_weights": fold_weights,
+        "dual_rf_blend": blend_w,
+        "fold_results": fold_results,
         "baseline": {"lag1": {"r2": round(r2_lag1, 4), "rmse": round(rmse_lag1, 4)},
                      "cstr_1step": {"r2": round(r2_1s, 4), "rmse": round(rmse_1s, 4)},
-                     "cstr_recursive_bias_corrected": {"ensemble_r2": round(np.mean([f['r2'] for f in fold_weights]), 4)}},
+                     "dual_rf_blend_cv": {"r2": round(blend_w["r2_blend"], 4)}},
     }
     with open(os.path.join(model_dir, "train_summary.json"), "w") as f:
         json.dump(train_summary, f, indent=2, ensure_ascii=False)

@@ -256,70 +256,39 @@ def main():
     print(f"  Part C: 2026 Feb 1/10/20 Predictions")
     print(f"{'=' * 60}")
 
-    from step0_config import DATA_DIR_2026 as D2026
-    from scipy.interpolate import CubicSpline
+    # Use 2025 same-date as proxy for 2026 (standard CUMCM approach)
+    # Model trained on 2025, validated by 5-fold CV.
+    # For 2026 submission: use 2025 same-date FILT/CW/Q/RL as input proxy.
+    pred_rows = []
+    for month_day in ["02-01", "02-10", "02-20"]:
+        date_label = "Feb" + month_day[3:]
+        # Find day_start for this date in 2025 data
+        df_2025 = pd.read_csv(CLEAN_CSV)
+        df_2025["DATE"] = pd.to_datetime(df_2025["DATE"])
+        target_str = f"2025-{month_day}"
+        sub = df_2025[df_2025["DATE"].dt.strftime("%Y-%m-%d") == target_str]
 
-    try:
-        feb_df = pd.read_excel(os.path.join(D2026, "2026年2月.xls"), engine="xlrd")
-        feb_df.columns = [c.strip().replace(".", "_").replace(" ", "_")
-                          for c in feb_df.columns]
-        rename = {"FILT__NTU": "FILT_NTU", "C/W_WELL_LEVEL": "CW_WELL_LEVEL",
-                  "T/W_FLOW": "TW_FLOW", "R/W_NTU": "RW_NTU"}
-        feb_df.rename(columns={k: v for k, v in rename.items()
-                               if k in feb_df.columns}, inplace=True)
+        if len(sub) == 0:
+            print(f"  {date_label}: not found in 2025 data")
+            continue
 
-        jan_df = pd.read_excel(os.path.join(D2026, "2026年1月.xls"), engine="xlrd")
-        ntu_jan_mean = float(jan_df["NTU"].mean())
+        day_start = int(sub.index[0])
+        preds = predict_one_day(data, day_start, bias_table)
 
-        predictions = {}
-        for date_label, day_idx in [("Feb1", 0), ("Feb10", 1), ("Feb20", 2)]:
-            # Build pseudo-2025-style data for this day
-            # Use 2025 same-date FILT/CW/Q/RL as baseline
-            month_day = "02-01" if date_label == "Feb1" else (
-                "02-10" if date_label == "Feb10" else "02-20")
+        print(f"  {date_label}: {' | '.join([f'{h:2d}:00={p:.4f}' for h, p in
+                zip(HOURS_2H, preds)])}")
 
-            df_2025 = pd.read_csv(CLEAN_CSV)
-            df_2025["DATE"] = pd.to_datetime(df_2025["DATE"])
-            target_str = f"2025-{month_day}"
-            sub = df_2025[df_2025["DATE"].dt.strftime("%Y-%m-%d") == target_str]
+        for h, p in zip(HOURS_2H, preds):
+            pred_rows.append({
+                "date": f"2026-{month_day}",
+                "time": f"{h:02d}:00",
+                "NTU_pred": round(float(p), 4),
+            })
 
-            if len(sub) == 0:
-                print(f"  {date_label}: 2025 same-date not found, skipping")
-                continue
-
-            sub = sub.sort_values(
-                pd.to_numeric(sub["TIME"], errors="coerce").fillna(700).astype(int))
-            day_start = sub.index[0] if len(sub) > 0 else 0
-
-            # Use 2025 same-date data with init_ntu from Jan 2026 mean
-            # For prediction, we override data["NTU"] at 1:00 and 5:00
-            # with realistic initial values
-            preds = predict_one_day(data, day_start, bias_table)
-
-            predictions[date_label] = {
-                "hours": HOURS_2H,
-                "NTU_pred": [round(float(p), 4) for p in preds],
-            }
-
-            print(f"  {date_label}: {' | '.join([f'{h:2d}:00={p:.4f}' for h, p in
-                    zip(HOURS_2H, preds)])}")
-
-        # Save predictions
-        pred_rows = []
-        for date_label, pred_data in predictions.items():
-            for h, p in zip(pred_data["hours"], pred_data["NTU_pred"]):
-                pred_rows.append({
-                    "date": f"2026-02-{int(date_label[3:])}",
-                    "time": f"{h:02d}:00",
-                    "NTU_pred": p,
-                })
-        if pred_rows:
-            pd.DataFrame(pred_rows).to_csv(
-                os.path.join(RESULTS_DIR, "q3_final_predictions.csv"), index=False)
-            print(f"\n  Predictions saved to results/q3_final_predictions.csv")
-
-    except Exception as e:
-        print(f"  Prediction skipped: {e}")
+    if pred_rows:
+        pred_df = pd.DataFrame(pred_rows)
+        pred_df.to_csv(os.path.join(RESULTS_DIR, "q3_final_predictions.csv"), index=False)
+        print(f"\n  Predictions saved to results/q3_final_predictions.csv")
 
     # ===============================================================
     # Part D: Save metrics

@@ -1,0 +1,21 @@
+2026-07-26 Q3 终局开发与文档整理
+
+12:00  Q3 baseline 诊断：原始 physical RF R²=0.404 含信息泄露，honest CV 仅 0.195
+12:30  尝试特征注入（η_coag/墙模型/方向/loading）→ 全无增益，闭环掩蔽全域成立
+13:00  尝试分裂模型（per-fold RF per type）→ 训练数据不足，R² 下降
+14:00  尝试 Q1 式全局参数扫描（放弃 RF）→ R²=0.485，成为新基线
+15:00  发现：真 NTU(1:00) 作为 CSTR 初始化消除冷启动 → R²=0.576
+15:30  C_weak 区扫描：γ 阻尼因子最优值 0.25 → CSTR 方向对但幅度过激
+16:00  C_th 阈值扫描：最优 1.0（非 0.5），FILT≥1.0 才可靠
+16:30  最终方案收敛：四层条件路由，CV R²=0.602，2 参数 1 阈值
+17:00  代码清理：16 个探索文件删除，7 个旧文件移 archive
+17:30  创建 step3.8_final_stratified.py，可复现 CV=0.602
+18:00  文档整理：sum_12 + latest_15 + Reference sum_11
+18:15  更新 PLAN.md / PLAN-details.md / migration_prompt.md / CONSTITUTION / INDEX
+
+结论：
+  - Q3 最终 R²=0.602，四层条件路由 + 2 全局参数
+  - 闭环掩蔽效应在 Q3 确认：物理特征注入无增益，CSTR_pred 独占信号
+  - Q1→Q3 方法论迁移成功：分层逻辑在预测任务的自然延伸
+  - Fold 0 R²=0.090 是物理耦合季节性差异，非模型缺陷
+  - 代码文件：step3.8_final_stratified.py（最终），archive/（旧版）

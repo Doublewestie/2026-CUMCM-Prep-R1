@@ -28,6 +28,8 @@
 - `Code/docs/sums/sum_9_Q4三维风险评分与四级分类.md` — Q4 方案
 - `Code/docs/sums/sum_10_project_cleanup.md` — 项目重构记录
 - **`Code/docs/sums/sum_11_模型改进探索全历程.md`** — **Q2/Q3改进探索: 五次尝试全失败, 闭环掩蔽效应五重证据链**
+- **`Code/docs/sums/sum_12_Q3四层条件路由最终方案.md`** — **Q3终局: 四层条件路由, CV R²=0.602**
+- **`Code/docs/sums/sum_11_Q3模型收敛.md`** — Q3融合策略对比(队友)
 
 ### 必读（方法论学习，agent面向）
 - `Code/Reference/sums/sum_1_Q1特征筛选学习总结.md`
@@ -39,16 +41,17 @@
 - `Code/Reference/sums/sum_7_A线CSTR物理模型细化全历程.md` — **A线终点: 分tier A, R²=0.783**
 - `Code/Reference/sums/sum_8_B线负反馈控制回路探索全历程.md` — **B线终点: 负反馈存在但不可量化建模**
 - **`Code/Reference/sums/sum_10_闭环掩蔽效应五重证据链.md`** — **Agent认知: 五次改进全历程 + 失败模式分类 + 设计原则**
+- **`Code/Reference/sums/sum_11_Q3四层条件路由方法论.md`** — **Q3方法论深度分析 + Q1对比 + 闭环掩蔽验证**
 - `Code/docs/logs/latest_8.log` — 墙(η_coag)模型全历程 + RL×Q规则发现 (替代已废弃的Reference/sum_9, 内容合并至sum_7+交接说明)
 - `Code/Reference/docs/CONSTITUTION.md`
 - `Code/Reference/docs/INDEX.md`
 
 ### 速读（了解近期动态）
-- `Code/docs/logs/latest_13.log` — Q2/Q3模型改进探索全历程 (2026-07-26)
-- `Code/docs/logs/latest_12.log` — Q3管线验证 (2026-07-26)
+- `Code/docs/logs/latest_15.log` — Q3终局开发 + 文档整理 (2026-07-26)
+- `Code/docs/logs/latest_14.log` — 数学命名规范审查 (2026-07-26)
 
 ### 必读（代码现状）
-- 运行 `python step1.4_feature_importance.py` 获取T3特征重要性
+- 运行 `python step3.8_final_stratified.py` 获取Q3完整CV+消融报告
 - 运行 `python step1.9+_summary_report.py` 获取完整汇总表
 
 ---
@@ -58,7 +61,7 @@
 ### 已完成（按Phase）
 - **Phase 1 (Q1)**: 三级分层灰箱 + A线物理细化已闭环。最终公式 (step1.7_final): 分tier CSTR + Balance Detector, A={T1:400, T2:250, T3:30} + A_same=100/A_diff=20, 全量 R²=**0.807**。T3特征重要性: η_coag#1(0.335)。
 - **Phase 2 (Q2)**: 双模阈值诊断已闭环。CCF/MIC/TE三方法全部失效。AR(6) R²=0.52 > TCN R²=-0.15。最终: log-AR(6)+RidgeCV, CV R²=0.6955。**五次改进尝试(方向感知/加权/去惯性等)全失败——详见 sum_11 + Reference sum_10。**
-- **Phase 3 (Q3)**: 链式预测(CSTR递归+bias+RF+ensemble)已实现。CV R²=0.267; oracle R²=0.503理论天花板。Sobol敏感性: η_coag S_Ti=0.596最显著。TimesFM零样本基线: 预测均值~0.093(纯外推,无物理知识)。**Q3偏离原始spec(双源架构未实现), 当前架构为简化链式方案。**
+- **Phase 3 (Q3)**: 四层条件路由已闭环。final: step3.8_final_stratified.py。天型 A/B/C_strong/C_weak 分策略预测，CSTR链从NTU(1:00)启动。参数: α_B=0.34, γ_W=0.25, C_th=1.0 (2QL参数+1阈值)。5-fold CV R²=**0.602**。探索历程: 0.195→0.251→0.397→0.485→0.576→0.602。详见 sum_12 + Reference sum_11。
 - **Phase 4 (Q4)**: 三维风险评分(融合Q1/Q2) + 分区独立Jenks + 事件回溯验证已闭环。超标捕获率88.76%, 虚警率0%, 提前预警20h。f₂维度已接入per-tier CSTR β₂。
 
 ### 待完成（按优先级）

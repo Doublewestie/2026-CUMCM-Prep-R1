@@ -25,6 +25,11 @@
 | sum_6 | Q1阈值敏感性分析 | 0.05/0.15 数据驱动验证为全局最优 |
 | **sum_7** | **A线CSTR物理模型细化全历程** | **分tier A: R²=0.783, A={400,250,30}** |
 | **sum_8** | **Q2 log(FILT) AR(6)+RidgeCV 终版** | **log-AR(6) R²=0.6955 CV, tau=4h/6h/2h** |
+| sum_9 | Q4三维风险评分与四级分类 | 3D评分+分区Jenks, 捕获率88.76% |
+| sum_10 | 项目清理与重构 | 统一数据加载器, TCN代码移除 |
+| sum_11 | 模型改进探索全历程 | Q2/Q3五次尝试全失败, 闭环掩蔽效应五重证据链 |
+| sum_11_Q3 | Q3融合策略对比与模型收敛 (队友) | 双RF / 线性融合 / ablations |
+| **sum_12** | **Q3四层条件路由最终方案** | **A/B/C_strong/C_weak, CV R²=0.602** |
 
 ### Reference/sums/ (方法论学习, agent面向)
 
@@ -38,7 +43,8 @@
 | sum_6 | Q1阈值敏感性分析 | 离散分布特征, 相关性断层扫描 |
 | **sum_7** | **A线CSTR物理模型细化** | **分tier A发现, N-CSTR/Fr/加速度消融, 5项失败+1项突破** |
 | **sum_8** | **B线负反馈控制回路探索** | **Granger/IRF/eta 隐藏反馈/状态空间/三项修正** |
-| **sum_7** | **墙(η)模型与RL×Q平衡检测器** | **墙双模行为 + 规则化 A: R²=0.807 (详见 docs/sums/sum_7 + latest_8.log)** |
+| sum_10 | 闭环掩蔽效应五重证据链 | Agent认知: 五次改进全历程 + 失败模式分类 + 设计原则 |
+| **sum_11** | **Q3四层条件路由方法论** | **Q1→Q3迁移验证, γ阻尼, C_th扫描, 失败模式分类** |
 
 ### logs (`Code/docs/logs/`)
 
@@ -57,6 +63,9 @@
 | latest_10 | 项目清理 | 队友项目重构会话 |
 | latest_11 | — | 队友会话 |
 | latest_12 | — | 队友会话 |
+| latest_13 | Q2/Q3改进探索 | 8次尝试全部记录 |
+| latest_14 | 命名规范审查 | math-name 全项目审计 |
+| **latest_15** | **Q3终局开发** | **四层条件路由收敛, 文档整理** |
 
 ---
 
@@ -97,7 +106,25 @@
 | `step2.3_comfort_report.py` | 舒适区统计报告 | ~55 |
 | `step2.5_visualization.py` | 双模分区+操作员策略图 | ~140 |
 
-### 未启动 (Q3-Q5)
+### Q3 四层条件路由方案 (step3.8)
+
+| 文件 | 功能 | 行数 |
+|------|------|:---:|
+| `step3.8_final_stratified.py` | **Q3最终: 四层分类+全局参数+CV验证+消融表** | ~280 |
+
+**核心结果**: 四层条件路由 (A/B/C_strong/C_weak), 2QL参数+1阈值, CV R²=**0.602**
+
+**旧版 (archive/)**:
+| 文件 | 功能 |
+|------|------|
+| `archive/step3.0_pipeline_main.py` | 原CSTR两段链式预测 |
+| `archive/step3.1_residual_train.py` | 原残差RF+物理RF训练 |
+| `archive/step3.2_forecast_2026.py` | 原2026预测 |
+| `archive/step3.3_validation.py` | 原CV验证脚本 |
+| `archive/step3.4_sensitivity.py` | Sobol敏感性分析 |
+| `archive/step3.5_visualization.py` | 原Q3可视化 |
+
+### Q4-Q5 (已完成部分)
 
 | 文件 | 功能 | 状态 |
 |------|------|:---:|

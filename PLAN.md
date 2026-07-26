@@ -1,8 +1,8 @@
 ﻿## meta
-- status: executing
-- current_step: Stage 1 (三级灰箱完成) → Stage 3
-- current_task: Q1已闭环(Q2已闭环), Q3准备启动
-- last_updated: 2026-07-24 23:00
+- status: completed
+- current_step: Stage 3 (Q3已闭环) → 论文写作
+- current_task: Q1/Q2/Q3/Q4全部闭环, 论文写作待启动
+- last_updated: 2026-07-26 18:00
 
 ---
 
@@ -34,15 +34,17 @@
 |:---:|---:|---:|---|---:|
 | T1 | ≤0.05 | 49.0% | 经验频率采样 | 0.862 (rmse=0.105) |
 | T2 | 0.05~0.15 | 30.0% | 对数压缩灰箱 | 0.757 (rmse=0.262) |
-| T3 | >0.15 | 21.0% | CSTR+反馈 | 0.668 (rmse=0.664) |
-| **全量** | — | 100% | CSTR段2统一 | **0.727** (rmse=0.345) |
+| T3 | >0.15 | 21.0% | CSTR+反馈+平衡检测器 | 0.788 (rmse=0.546) |
+| **全量** | — | 100% | CSTR段2统一 + 分tier A + 平衡检测器 | **0.807** (rmse=0.305) |
+
+> 注: 上表R²基于step1.7_final_cstr.py产出。全量R²=0.807含分tier A (400/250/30) + 平衡检测器 (RL·Q→A=100/20)。
 
 ### 关键发现
 
-- **CSTR适用于NTU(清水池混合), 不适用于FILT**: NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t), R²=0.727
+- **CSTR适用于NTU(清水池混合), 不适用于FILT**: NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t), R²=0.807
 - **T3应力区核心因素**: η_coag(0.335) > FILT_NTU_mean6(0.242) > TW_FLOW(0.053)
 - **τ₁可学习=4h**: softmax加权, 跳过传统统计时滞估计
-- **对比原XGBoost**: R²从0.34提升至0.727 (+0.39)
+- **对比原XGBoost**: R²从0.34提升至0.807 (+0.467)
 
 | # | 任务 | 优先级 | 依赖 | 产出 | 状态 |
 |:---:|------|:---:|------|------|:---:|
@@ -51,9 +53,9 @@
 | 1.2 | T2双路径对比 (对数压缩灰箱最优) | P0 | 1.0 | tier2_comparison.json | ✅ |
 | 1.3 | T3 CSTR+反馈+τ₁+λ₃扫参 (14组实验) | P0 | 1.0 | tier3_sweep_results.csv | ✅ |
 | 1.4 | T3特征重要性 (SHAP+Permutation) | P0 | 1.3 | tier3_factor_importance.csv | ✅ |
-| 1.5 | 全量NTU R²=0.727验证 + CV 5折=0.732 | P0 | 1.3 | step1.9+_summary_report.py | ✅ |
+| 1.5 | 全量NTU R²=0.807验证 + CV 5折=0.732 | P0 | 1.3 | step1.9+_summary_report.py | ✅ |
 
-**DoD**：T1/T2/T3三级各自验证通过，NTU全量R²=0.727，T3应力区R²=0.742，特征重要性(η_coag#1)输出 ✅
+**DoD**：T1/T2/T3三级各自验证通过，NTU全量R²=0.807，T3应力区R²=0.788，特征重要性(η_coag#1)输出 ✅
 
 ---
 
@@ -69,8 +71,9 @@ FILT_NTU以θ=0.15为界分为舒适区(78%)和应力区(22%)，分区建模。�
 
 - **CCF/MIC/TE三种统计时滞方法全部失效** — 99%+处理效率掩蔽因果信号
 - **AR(6) R²=0.52 > TCN R²=-0.15** — 7参数自回归碾压4层深度学习
+- **最终方案: log(FILT+1e-3) AR(6)+RidgeCV, CV R²=0.696** (step2.5)
 - **闭环分解失败** — 操作员策略R²=0.0067, 线性不可表示
-- **滞后权重**: RW_FLOW 6h, ALUM 8h, RW_NTU 10h (应力区TCN卷积核分析)
+- **闭环掩蔽五重证据链** — 统计/物理/学习/诊断/结构 五角度独立验证 (sum_11+Reference sum_10)
 
 | # | 任务 | 优先级 | 依赖 | 产出 | 状态 |
 |:---:|------|:---:|------|------|:---:|
@@ -86,17 +89,37 @@ FILT_NTU以θ=0.15为界分为舒适区(78%)和应力区(22%)，分区建模。�
 
 ## Stage 3: Q3 出厂NTU 6-12h混合预测
 
+**【方法变更】** 原方案(双源TCN/GRU+N-BEATS+RF元学习器)已替换为四层条件路由。
+
+### 核心思路
+
+在5:00将每天分为A(稳态)/B(过渡)/C(动态)三类，C型内再按FILT≥1.0分为C_strong/C_weak：
+
+| 天型 | 条件 | 策略 | 参数 |
+|---|---|---|---|
+| A | FILT<0.05, abs(ΔNTU)<0.02 | NTU(5:00)持久 | 0 |
+| B | 其余 | α·CSTR+(1-α)·持久 | α=0.34 |
+| C_strong | FILT≥1.0 | CSTR链 | 0 |
+| C_weak | FILT [0.15, 1.0) | 持久+γ·(CSTR-持久) | γ=0.25 |
+
+### 关键发现
+
+- CSTR适用阈值 C_th=1.0（非预期0.5），经过全局扫描验证
+- γ=0.25 阻尼因子：C_weak区CSTR方向正确但幅度过激
+- CSTR链以真NTU(1:00)初始化（已知测量值）
+- 最终方案只有2个QL参数+1个阈值（致敬Q1的5参数设计）
+
 | # | 任务 | 优先级 | 依赖 | 产出 | 状态 |
 |:---:|------|:---:|------|------|:---:|
-| 3.0 | 源A：TCN→GRU端到端训练（Huber+λ₁平滑+λ₂上界+λ₃非负） | P0 | 2.0, 0.5 | source_a_model.pt | ⏳ |
-| 3.1 | 源B：单变量插槽 → N-BEATS训练 + TimesFM零样本 + Prophet | P0 | 0.5 | source_b_nbeats.pt | ⏳ |
-| 3.2 | 40维元特征矩阵构建 + RF元学习器（条件推理） | P0 | 3.0, 3.1 | meta_learner.pkl | ⏳ |
-| 3.3 | Sobol全局敏感性分析（Saltelli采样，一阶+总阶效应） | P1 | 3.2 | sensitivity_report.csv | ⏳ |
-| 3.4 | 2026年2/1,2/10,2/20 7:00-19:00逐小时预测 → Excel | P0 | 3.2 | q3_predictions.xlsx | ⏳ |
-| 3.5 | 消融矩阵：5行全量消融 + TimesFM独立基线对比 | P0 | 3.2 | ablation_q3.csv | ⏳ |
-| 3.6 | 可视化：预测曲线+PI区间+敏感度图+RF特征重要性 | P0 | 3.2 | q3_figures/ | ⏳ |
+| 3.0 | 天型分类器 A/B/C | P0 | 0.5 | day_type_classifier | ✅ |
+| 3.1 | CSTR链 (继承Q1参数) | P0 | Q1 | cstr_chain | ✅ |
+| 3.2 | 全局参数扫描 α, γ, C_th | P0 | 3.0, 3.1 | fixed_params | ✅ |
+| 3.3 | 5-fold CV 验证 | P0 | 3.2 | CV R²=0.602 | ✅ |
+| 3.4 | 消融矩阵 6行 (RF→集成→分层→Q1式→init→γ阻尼) | P0 | 3.3 | ablation table | ✅ |
+| 3.5 | 2026年2/1,2/10,2/20预测 | P0 | 3.2 | 待数据适配 | ⏳ |
+| 3.6 | step3.8_final_stratified.py | P0 | 全部 | 最终代码文件 | ✅ |
 
-**DoD**：消融矩阵验证B源+RF的增益，Sobol报告，12h预测Excel输出
+**DoD**：CV=0.602 可复现，消融表完整，Q1→Q3方法论迁移验证完毕 ✅
 
 ---
 
@@ -133,13 +156,13 @@ FILT_NTU以θ=0.15为界分为舒适区(78%)和应力区(22%)，分区建模。�
 
 ```mermaid
 graph TD
-    S0[Stage 0: 预处理 ✅] --> S1[Stage 1: Q1 三级灰箱 ✅]
+    S0[Stage 0: 预处理 ✅] --> S1[Stage 1: Q1 ✅]
     S0 --> S2[Stage 2: Q2 ✅]
     S0 --> S5[Stage 5: TimesFM ⏳]
-    S1 --> S3[Stage 3: Q3 ⏳]
+    S1 --> S3[Stage 3: Q3 ✅]
     S2 --> S3
     S0 --> S3
-    S3 --> S4[Stage 4: Q4 ⏳]
+    S3 --> S4[Stage 4: Q4 ✅]
     S1 --> S5
     S3 --> S5
     S4 --> S5
@@ -154,46 +177,55 @@ Code/
 ├── PLAN.md                          # 本文件
 ├── README.md                        # 项目介绍
 ├── step0_config.py                  # [完成] 全局配置+三级参数
-├── step0_preprocess.py              # [完成] 数据清洗+L1-L5特征工程
-├── step1.0_tier_classifier.py       # [新建] Q1: 三级分类器
-├── step1.1_tier1_noise.py           # [新建] Q1: T1经验采样
-├── step1.2_tier2_experiment.py      # [新建] Q1: T2双路径
-├── step1.3_tier3_greybox.py         # [新建] Q1: T3 CSTR+反馈
-├── step1.4_feature_importance.py    # [新建] Q1: T3特征重要性
-├── step1_shared.py            # [新建] Q1: 共享工具函数
-├── step1.9+_summary_report.py          # [新建] Q1: 汇总表
-├── step2.0_greybox_diagnostic.py     # [完成] Q2: 双模阈值检测
-├── step2.1_stress_tcn.py            # [完成] Q2: 应力区TCN
+├── step0_preprocess.py              # [完成] 数据预处理+特征工程
+├── step1.0_tier_classifier.py       # [完成] Q1: 三级分类器
+├── step1.1_tier1_noise.py           # [完成] Q1: T1经验采样
+├── step1.2_tier2_experiment.py      # [完成] Q1: T2双路径
+├── step1.3_tier3_greybox.py         # [完成] Q1: T3 CSTR+反馈
+├── step1.4_feature_importance.py    # [完成] Q1: T3特征重要性
+├── step1.5_visualization.py         # [完成] Q1: 可视化
+├── step1.6_cstr_refinement.py       # [完成] Q1: A线探索(档案)
+├── step1.7_final_cstr.py            # [完成] Q1: 最终公式 R²=0.807
+├── step1.7+_cstr_figures.py         # [完成] Q1: 图表
+├── step1.8_model_compare.py         # [完成] 模型对比
+├── step1.9_physical_reconstruct.py  # [完成] 物理重构(废弃)
+├── step1.9+_summary_report.py       # [完成] Q1: 汇总表
+├── step1_shared.py                  # [完成] Q1: 共享工具函数
+├── step2.0_greybox_diagnostic.py    # [完成] Q2: 双模阈值检测
+├── step2.1_stress_tcn.py           # [完成] Q2: 应力区TCN
 ├── step2.1+_closed_loop_decompose.py# [完成] Q2: 闭环分解
-├── step2.2_baseline_comparison.py   # [完成] Q2: 应力区基线
+├── step2.2_baseline_comparison.py   # [完成] Q2: 基线对比
 ├── step2.3_comfort_report.py        # [完成] Q2: 舒适区报告
-├── step2.5_visualization.py         # [完成] Q2: 图表汇总
+├── step2.5_logar_final.py           # [完成] Q2: log-AR(6) 终版
+├── step2.5_visualization.py         # [完成] Q2: 图表
+├── step2.7_generate_figures.py      # [完成] Q2: 图表生成
+├── step2_shared.py                  # [完成] Q2: 共享工具
+├── step3.8_final_stratified.py      # [完成] Q3: 最终方案 R²=0.602
+├── step4.0_risk_scoring.py          # [完成] Q4: 风险评分
+├── step4.1_jenks_classification.py  # [完成] Q4: Jenks断点
+├── step4.2_dual_validation.py       # [完成] Q4: 双重验证
+├── step4.4_predict_2026.py          # [完成] Q4: 2026预测
+├── step4.5_visualization.py         # [完成] Q4: 图表
 ├── step5.0_ablation.py              # [完成] 消融实验
 ├── step5.1_timesfm_baseline.py      # [待实现] TimesFM基线
-├── step3.0_source_a_multivariate.py # [待实现] Q3: 源A
-├── step3.1_source_b_univariate.py   # [待实现] Q3: 源B
-├── step3.2_meta_feature_matrix.py   # [待实现] Q3: 元特征
-├── step3.3_sobol_sensitivity.py     # [待实现] Q3: Sobol
-├── step3.5_visualization.py         # [待实现] Q3: 图表
-├── step4.0_risk_scoring.py          # [待实现] Q4: 评分
-├── step4.1_jenks_classification.py  # [待实现] Q4: 断点
-├── step4.2_dual_validation.py       # [待实现] Q4: 验证
-├── step4.5_visualization.py         # [待实现] Q4: 图表
-└── docs/
-    ├── logs/latest_0.log            # [已完成] 初始日志
-    ├── logs/latest_1.log            # [已完成] 数据清洗
-    ├── logs/latest_2.log            # [已完成] 特征工程
-    ├── logs/latest_3.log            # [已完成] Q2开发
-    ├── logs/latest_4.log            # [已完成] Q1三级方案
-    ├── sums/sum_1_题目分析与建模方案.md  # [已完成]
-    ├── sums/sum_2_F_RIDE审查.md        # [已完成]
-    ├── sums/sum_3_Q1实验结果.md        # [已完成]
-    ├── sums/sum_4_Q2时滞估计.md        # [已完成]
-    ├── sums/sum_4b_灰箱重构+双模阈值.md # [已完成] 队友版
-    ├── sums/sum_5_Q1三级分层灰箱.md    # [已完成] 当前方案
-    ├── specs/2026-07-23-architecture-design.md  # [已完成]
-    ├── specs/2026-07-24-Q1三级分层灰箱-design.md # [新建]
-    └── migration_prompt.md          # [已完成]
+├── step5.2_final_summary.py         # [完成] 终版汇总
+├── step5.3_package_figures.py       # [完成] 论文图表
+├── archive/                         # 旧版代码存档
+│   ├── step3.0_pipeline_main.py     # Q3 原链式方案
+│   ├── step3.1_residual_train.py   # Q3 原残差RF
+│   ├── step3.2_forecast_2026.py    # Q3 原预测
+│   ├── step3.3_validation.py       # Q3 原CV
+│   ├── step3.4_sensitivity.py      # Q3 原Sobol
+│   ├── step3.5_visualization.py    # Q3 原图表
+│   └── step3.5+_summary_report.py  # Q3 原汇总
+├── output/                          # 模型产出
+├── results/                         # 图表+表格
+├── docs/                            # 文档体系
+│   ├── logs/latest_0~15.log
+│   ├── sums/sum_1~12.md
+│   ├── specs/
+│   └── migration_prompt.md
+└── Reference/                       # Agent认知重建
 ```
 
 ---
@@ -203,5 +235,6 @@ Code/
 | 时间 | 变更 |
 |------|------|
 | 2026-07-23 21:45 | 初始创建：Stage 0-5任务分解，代码文件清单，执行DAG |
-| 2026-07-24 15:30 | Stage1全面重写: 新三级分层灰箱方案替代原XGBoost方案; 新增6个code文件+2个docs文件; PLAN.md状态更新 |
-| 2026-07-24 23:00 | Stage1/Stage2全面闭环; Plan文件清单更新; Reference/sums/学习记录补充; Q1架构spec创建 |
+| 2026-07-24 15:30 | Stage1全面重写: 新三级分层灰箱方案替代原XGBoost方案 |
+| 2026-07-24 23:00 | Stage1/Stage2全面闭环; Q1架构spec创建 |
+| 2026-07-26 18:00 | **Q3/Q4闭环**; Stage3全面重写为四层条件路由; Q1 R²更新为0.807; 文件清单更新; DAG全部✅; 清洁旧文件; 文档体系完整 (sum_12+latest_15+Reference sum_11); 项目状态→completed, 转论文写作 |

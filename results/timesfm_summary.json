@@ -1,0 +1,8 @@
+{
+  "model": "TimesFM 2.5 (200M params, zero-shot)",
+  "context_length": 4375,
+  "forecast_horizon": 36,
+  "feb1_mean": 0.0951,
+  "feb10_mean": 0.0946,
+  "feb20_mean": 0.0925
+}

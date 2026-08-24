@@ -1,0 +1,29 @@
+{
+  "baseline_uniform": {
+    "r2": 0.6555,
+    "std": 0.1778
+  },
+  "baseline_tier": {
+    "r2": 0.6889,
+    "std": 0.1774
+  },
+  "exp_1d_beta_mlp_9feat": {
+    "r2": 0.5884,
+    "std": 0.2435
+  },
+  "exp_2a_theta_mlp_7feat": {
+    "r2": 0.4924,
+    "std": 0.2574
+  },
+  "exp_2b_theta_mlp_10feat_tier": {
+    "r2": -0.2232,
+    "std": 1.4965
+  },
+  "exp_2c_theta_mlp_12feat_tier_full": {
+    "r2": -0.8224,
+    "std": 1.5787
+  },
+  "best_nn": "Beta 9feat",
+  "best_nn_r2": 0.5884,
+  "verdict": "FAIL"
+}

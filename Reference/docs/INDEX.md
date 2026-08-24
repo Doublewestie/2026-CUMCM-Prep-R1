@@ -51,18 +51,42 @@
 | sum_10 | 闭环掩蔽效应五重证据链 | Agent认知: 五次改进全历程 + 失败模式分类 + 设计原则 |
 | **sum_11** | **Q3四层条件路由方法论** | **Q1→Q3迁移验证, γ阻尼, C_th扫描, 失败模式分类** |
 
-### 论文材料 (docs/materials/, 2026-07-27 初始化)
+### 论文材料 (docs/materials/, 2026-07-27 时期C 六步链完成)
 
 | 文档 | 内容 |
 |:---:|------|
 | `docs/materials/00_素材总览.md` | 材料区唯一根入口（类别登记/核心发现速览/口径红线） |
+| `docs/materials/01_主题素材/数据层.md` | FILT 三级分布公理 + r=0.81 口径标注 |
+| `docs/materials/01_主题素材/方法层.md` | log-AR(6) + τ 三源交叉（ALUM=6h 以产物为准） |
+| `docs/materials/01_主题素材/模型层.md` | CSTR 段2（双口径 0.807/0.737）+ Balance Detector |
+| `docs/materials/01_主题素材/模型层_Q3.md` | 四层路由（部署 0.485/oracle 0.617） |
+| `docs/materials/01_主题素材/风险层.md` | Q4 前瞻/回顾双口径 |
+| `docs/materials/01_主题素材/方法学.md` | 闭环掩蔽七重证据 |
 | `docs/materials/02_核心文档/口径声明大全.md` | M1-M4 修正历史 + 主/伴随口径 + 数字黑名单 |
 | `docs/materials/02_核心文档/数字总表.md` | 派生自 results/number_census.csv（论文引用数字） |
 | `docs/materials/02_核心文档/路线叙事_要点式.md` | 六转折点故事线 |
+| `docs/materials/02_核心文档/研究思路主线.md` | v2 实验项：四段式 + 转折点 T1-T7 + 粘合度信号 |
 | `docs/materials/02_核心文档/图素材清单.md` | 10 图优先级 + 图注三件套 |
 | `docs/materials/02_核心文档/论文大纲.md` | 九章结构 + 摘要三段式 |
 | `docs/materials/02_核心文档/Q1章节初稿.md` | Q1 章节初稿（评审自审记录） |
 | `docs/materials/02_核心文档/Q2章节初稿.md` | Q2 章节初稿（评审自审记录） |
+| `docs/materials/03_文献库/引用卡库.md` | 6 正式引用卡（Shardt&Huang/CSTR示踪×2/ML/分块CV/灰箱）+ 排除记账 |
+| `docs/materials/03_文献库/候选清单与参考文献表.md` | 非正式区 + 引用-使用台账 + 增量剥离语句 |
+| `docs/materials/03_文献库/参考文献与文献素材_取用层.md` | 引用纪律/段落骨架/论文手提问速查 |
+| `docs/materials/04_亮点档案/状态机表.md` | IN-01~14 转正 / FN-01~07 证伪（证据三元组） |
+| `docs/materials/04_亮点档案/主线树与口径复用表.md` | 全题承接链 + 模型连贯账本（6.09/44 等已登记） |
+| `docs/materials/04_亮点档案/反例档案.md` | 反例型关键发现（黑箱/TCN/五次改进/NN 全败） |
+| `docs/materials/04_亮点档案/创新点与关键点素材_取用层.md` | 7 亮点成句 + 叙述红线 |
+| `docs/materials/05_审查与总账/audit_1.md` | 素材-代码一致性核查（零错误收敛，A1/A2 修复） |
+| `docs/materials/05_审查与总账/defense_自检报告.md` | 评审轮 8 类拷问 18 问 18/18 守住 |
+| `docs/materials/05_审查与总账/守卫运行记录.md` | 守卫 10/10 全绿 + 复跑命令 |
+| `docs/materials/05_审查与总账/v1迭代清单.md` | 10 偏差 + 3 新反模式（v2 修订依据） |
+
+### 守卫 (tests/)
+
+| 文件 | 内容 |
+|------|------|
+| `tests/test_core_guards.py` | 论文必引数字守卫 G1-G10（27 断言，10/10 全绿）；产物变更后必须运行 |
 
 ### 论文材料 (docs/)
 

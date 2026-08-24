@@ -226,11 +226,13 @@ Code/
 │   ├── step1.10_learnable_beta.py  # FAIL探索: NN可学习β/θ (2026-07-27归档)
 │   └── step3.9_learnable_routing.py # FAIL探索: NN路由 (2026-07-27归档)
 ├── output/                          # 模型产出 (不入git)
-├── results/                         # 图表+表格
+├── results/                         # 图表+表格；number_census.csv 论文数字源
+├── tests/                           # 守卫 test_core_guards.py (G1-G10, 产物变更必跑)
 ├── docs/                            # 文档体系
 │   ├── logs/latest_0~16.log
 │   ├── sums/sum_1~13.md
 │   ├── specs/
+│   ├── materials/                   # 论文材料区 (01主题素材/02核心文档/03文献库/04亮点档案/05审查总账)
 │   ├── 代码手→论文手交接说明.md
 │   └── migration_prompt.md
 └── Reference/                       # Agent认知重建
@@ -246,3 +248,4 @@ Code/
 | 2026-07-24 15:30 | Stage1全面重写: 新三级分层灰箱方案替代原XGBoost方案 |
 | 2026-07-24 23:00 | Stage1/Stage2全面闭环; Q1架构spec创建 |
 | 2026-07-26 18:00 | **Q3/Q4闭环**; Stage3全面重写为四层条件路由; Q1 R²更新为0.807; 文件清单更新; DAG全部✅; 清洁旧文件; 文档体系完整 (sum_12+latest_15+Reference sum_11); 项目状态→completed, 转论文写作 |
+| 2026-07-27 18:30 | **时期C论文材料六步链完成** (sum_13口径统一 + 守卫10/10 + audit_1收敛 + 文献6卡 + 评审18/18); materials 五类目录 + tests/ 落地; v1迭代清单 + v2草案 (等用户审核); 文件清单更新 |

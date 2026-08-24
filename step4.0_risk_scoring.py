@@ -1,10 +1,14 @@
 """
 step4.0_risk_scoring.py — 三维风险评分 + 熵权法
 =================================================
-融合 Q1/Q2 发现的三维评分:
-  f₁ 幅度 — 分区归一化(Q2 θ=0.15) + 月度P99滚动(Q1)
-  f₂ 时长 — 分区T_half + CSTR β₂惯性折扣(Q1)
-  f₃ 趋势 — 滞后对齐差分(Q2 τ) + η_coag加权(Q1)
+融合 Q1/Q2 发现的三维评分。默认使用 CSTR-predicted NTU（而非实际 NTU）
+计算 f₁/f₂/f₃，消除循环论证（评审 Issue #3 修复）。
+
+  f₁ 幅度 — CSTR-predicted NTU 分区归一化
+  f₂ 时长 — CSTR-predicted NTU 连续超标时长
+  f₃ 趋势 — CSTR-predicted NTU 与 FILT 差分 + η_coag加权
+
+MODE: 设置 USE_ACTUAL_NTU=True 切换回回顾性诊断模式。
 
 输出: q4_risk_scores.csv, q4_omega_weights.json
 """
@@ -15,7 +19,17 @@ import pandas as pd
 from step0_config import *
 
 warnings.filterwarnings("ignore")
-EPS = 1e-10
+EPS_Q0 = 1e-10
+EPS = 1e-6
+T1_THR, T2_THR = 0.05, 0.15
+
+# ─── Mode switch ──────────────────────────────────────────────
+USE_ACTUAL_NTU = False  # False→前瞻评估(用CSTR预测NTU) True→回顾诊断(用实际NTU)
+SAVE_SUFFIX = "_actual" if USE_ACTUAL_NTU else ""
+
+_RL_MED, _Q_MED = 8.0, 48
+_A_T1, _A_T2 = 400, 250
+_A_SAME, _A_DIFF = 100, 20
 
 
 def load_q2_params():
@@ -140,6 +154,39 @@ def compute_eta_coag(rw_ntu, filt_ntu):
     return (rw_ntu - filt_ntu) / denom
 
 
+def predict_ntu_cstr(filt, cw, q, rl):
+    """CSTR forward prediction of NTU from FILT + hydraulic state.
+
+    Uses fixed Q1 parameters (A_T1=400, A_T2=250, A_same=100, A_diff=20).
+    NTU(t) = β₂·NTU(t-1) + (1-β₂)·FILT(t).
+    This is a transfer function, not a time-series forecast — it uses
+    contemporaneous FILT(t), which is physically justified in a real plant
+    since FILT is measured at the filter outlet before water reaches the
+    clearwell effluent.
+    """
+    n = len(filt)
+    pred = np.zeros(n)
+    if n == 0:
+        return pred
+    # Use first actual NTU as initialization (same as Q1 CSTR convention)
+    pred[0] = filt[0] * 0.5  # rough init
+    for t in range(1, n):
+        ft = filt[t]
+        H = max(cw[t - 1], 0.1)
+        Qv = max(q[t - 1], 1.0)
+        if ft <= 0.05:
+            A0 = _A_T1
+        elif ft <= 0.15:
+            A0 = _A_T2
+        else:
+            rv = rl[t] if t < len(rl) and not np.isnan(rl[t]) else _RL_MED
+            A0 = _A_SAME if (rv - _RL_MED) * (Qv - _Q_MED) > 0 else _A_DIFF
+        theta = max(A0 * H / Qv, 0.02)
+        beta = np.clip(np.exp(-2.0 / theta), 0.001, 0.999)
+        pred[t] = beta * pred[t - 1] + (1.0 - beta) * ft
+    return np.clip(pred, 0, None)
+
+
 def entropy_weight(X):
     """熵权法: X is (n, d) array, return weights w (d,)"""
     n, d = X.shape
@@ -151,8 +198,9 @@ def entropy_weight(X):
 
 
 def main():
+    mode_label = "回顾性诊断(实际NTU)" if USE_ACTUAL_NTU else "前瞻评估(CSTR预测NTU)"
     print("=" * 60)
-    print("  step4.0 — 三维风险评分 + 熵权法")
+    print(f"  step4.0 — 三维风险评分 + 熵权法 [{mode_label}]")
     print("=" * 60)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -165,26 +213,39 @@ def main():
     n = len(df)
     print(f"  样本数: {n}")
 
-    ntu = df["NTU"].values.astype(float)
+    ntu_actual = df["NTU"].values.astype(float)
     filt = df["FILT_NTU"].values.astype(float)
     rw_ntu = df["RW_NTU"].values.astype(float)
     month = df["DATE"].dt.month.values.astype(float)
 
-    print("\n[2/5] 加载 CSTR/Q2 参数 + 计算 η_coag...")
+    print("\n[2/5] 加载 CSTR/Q2 参数 + 计算 η_coag + CSTR预测NTU...")
     cstr = load_cstr_params()
     cw_well = df["CW_WELL_LEVEL"].values.astype(float)
     tw_flow = df["TW_FLOW"].values.astype(float)
     rl = df["RIVER_LEVEL"].values.astype(float)
     beta2 = compute_per_sample_beta2(filt, cw_well, tw_flow, rl, cstr)
+    eta = compute_eta_coag(rw_ntu, filt)
+
+    # ── CSTR-predicted NTU (used instead of actual NTU to avoid circularity) ──
+    ntu_cstr_pred = predict_ntu_cstr(filt, cw_well, tw_flow, rl)
+    print(f"  CSTR NTU vs Actual: corr={np.corrcoef(ntu_actual[1:], ntu_cstr_pred[1:])[0,1]:.4f}")
+
+    # ── Select NTU source ──
+    if USE_ACTUAL_NTU:
+        ntu_use = ntu_actual
+        print(f"  [MODE] 使用 实际NTU (回顾性诊断)")
+    else:
+        ntu_use = ntu_cstr_pred
+        print(f"  [MODE] 使用 CSTR预测NTU (前瞻性评估, 无循环论证)")
+
     print(f"  beta2 per-tier: T1 median={np.median(beta2[filt<=0.05]):.3f}, "
           f"T2 median={np.median(beta2[(filt>0.05)&(filt<=0.15)]):.3f}, "
           f"T3 median={np.median(beta2[filt>0.15]):.3f}")
-    eta = compute_eta_coag(rw_ntu, filt)
 
     print("\n[3/5] 三维评分计算...")
-    f1 = compute_f1_amplitude(ntu, filt, month)
-    f2 = compute_f2_duration(ntu, filt, beta2)
-    f3 = compute_f3_trend(ntu, filt, eta)
+    f1 = compute_f1_amplitude(ntu_use, filt, month)
+    f2 = compute_f2_duration(ntu_use, filt, beta2)
+    f3 = compute_f3_trend(ntu_use, filt, eta)
 
     print(f"  f1幅度: mean={f1.mean():.4f} std={f1.std():.4f}")
     print(f"  f2时长: mean={f2.mean():.4f} std={f2.std():.4f}")
@@ -199,6 +260,18 @@ def main():
     print(f"  S_risk: mean={s_risk.mean():.4f} std={s_risk.std():.4f} "
           f"P90={np.percentile(s_risk, 90):.4f}")
 
+    # ── Compare with actual-NTU risk scores for reference ──
+    if not USE_ACTUAL_NTU:
+        f1a = compute_f1_amplitude(ntu_actual, filt, month)
+        f2a = compute_f2_duration(ntu_actual, filt, beta2)
+        f3a = compute_f3_trend(ntu_actual, filt, eta)
+        Xa = np.column_stack([f1a, f2a, f3a])
+        wa = entropy_weight(Xa)
+        sa = Xa @ wa
+        print(f"\n  [参考] 实际NTU S_risk: mean={sa.mean():.4f} std={sa.std():.4f}")
+        print(f"  [参考] CSTR预测 S_risk: mean={s_risk.mean():.4f} std={s_risk.std():.4f}")
+        print(f"  [参考] 相关系数: {np.corrcoef(sa, s_risk)[0,1]:.4f}")
+
     print("\n[5/5] 保存输出...")
     score_df = df[["DATE", "NTU", "FILT_NTU"]].copy()
     score_df["MONTH"] = month
@@ -207,8 +280,9 @@ def main():
     score_df["f2"] = f2
     score_df["f3"] = f3
     score_df["S_risk"] = s_risk
-    score_df["HAS_EVENT"] = (ntu > Q4_NTU_LIMIT).astype(int)
+    score_df["HAS_EVENT"] = (ntu_actual > Q4_NTU_LIMIT).astype(int)
     score_df["ETA_COAG"] = eta
+    score_df["NTU_CSTR_PRED"] = ntu_cstr_pred
     score_df.to_csv(OUT_Q4_RISK_SCORES, index=False, encoding="utf-8-sig")
 
     weights = {
@@ -216,6 +290,7 @@ def main():
         "f2_duration": round(w[1], 6),
         "f3_trend": round(w[2], 6),
         "method": "entropy_weight",
+        "ntu_source": "cstr_predicted" if not USE_ACTUAL_NTU else "actual",
     }
     with open(OUT_Q4_WEIGHTS, "w", encoding="utf-8") as f:
         json.dump(weights, f, indent=2, ensure_ascii=False)

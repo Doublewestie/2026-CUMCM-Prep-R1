@@ -1,0 +1,80 @@
+{
+  "model": "Q1 CSTR+Balance (TS-CV Validation)",
+  "parameters": {
+    "A_T1": 400,
+    "A_T2": 250,
+    "A_same": 100,
+    "A_diff": 20,
+    "RL_med": 6.09,
+    "Q_med": 44.0
+  },
+  "in_sample_reference": {
+    "r2_cstr": 0.8023,
+    "r2_persist": 0.6657
+  },
+  "cv_mean": {
+    "r2_cstr": 0.7369,
+    "r2_cstr_std": 0.1009,
+    "r2_persist": 0.6074,
+    "r2_persist_std": 0.2464,
+    "delta_r2": 0.1295,
+    "delta_r2_std": 0.1828
+  },
+  "fold_results": [
+    {
+      "fold": 0,
+      "val_start": 730,
+      "val_end": 1459,
+      "n_val": 729,
+      "r2_cstr": 0.5969,
+      "rmse_cstr": 0.3691,
+      "r2_persist": 0.1199,
+      "rmse_persist": 0.5453,
+      "delta_r2": 0.477
+    },
+    {
+      "fold": 1,
+      "val_start": 1459,
+      "val_end": 2188,
+      "n_val": 729,
+      "r2_cstr": 0.7324,
+      "rmse_cstr": 0.071,
+      "r2_persist": 0.7368,
+      "rmse_persist": 0.0704,
+      "delta_r2": -0.0044
+    },
+    {
+      "fold": 2,
+      "val_start": 2188,
+      "val_end": 2917,
+      "n_val": 729,
+      "r2_cstr": 0.8746,
+      "rmse_cstr": 0.3567,
+      "r2_persist": 0.7924,
+      "rmse_persist": 0.4588,
+      "delta_r2": 0.0821
+    },
+    {
+      "fold": 3,
+      "val_start": 2917,
+      "val_end": 3646,
+      "n_val": 729,
+      "r2_cstr": 0.8186,
+      "rmse_cstr": 0.4096,
+      "r2_persist": 0.694,
+      "rmse_persist": 0.532,
+      "delta_r2": 0.1246
+    },
+    {
+      "fold": 4,
+      "val_start": 3646,
+      "val_end": 4375,
+      "n_val": 729,
+      "r2_cstr": 0.6618,
+      "rmse_cstr": 0.1732,
+      "r2_persist": 0.6938,
+      "rmse_persist": 0.1647,
+      "delta_r2": -0.032
+    }
+  ]
+}

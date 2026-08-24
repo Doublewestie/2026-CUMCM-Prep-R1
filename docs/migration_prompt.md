@@ -52,6 +52,13 @@
 - `Code/docs/logs/latest_16.log` — 遗留收编: 诚实CV验证 + 口径统一 + TimesFM收尾 (2026-07-27)
 - `Code/docs/logs/latest_15.log` — Q3终局开发 + 文档整理 (2026-07-26)
 
+### 必读（论文材料区 — 论文写作唯一入口）
+- **`Code/docs/materials/00_素材总览.md`** — 材料区唯一根入口（类别登记+核心发现速览+口径红线）
+- `Code/docs/materials/02_核心文档/口径声明大全.md` — 引用数字前必查（M1-M4 修正历史）
+- `Code/docs/materials/02_核心文档/数字总表.md` — 派生自 results/number_census.csv
+- `Code/docs/materials/02_核心文档/路线叙事_要点式.md` — 六转折点叙事
+- `Code/docs/materials/02_核心文档/论文大纲.md` + `Q1章节初稿.md` + `Q2章节初稿.md` — 论文写作进度
+
 ### 必读（代码现状）
 - 运行 `python step3.8_final_stratified.py` 获取Q3完整CV+消融报告（oracle口径）
 - 运行 `python step3.8+_forecast_cstr.py` 获取Q3诚实部署口径 (forecast R²=0.485)

@@ -34,4 +34,12 @@
 13:00 代码处置: step1.10 + step3.9_learnable_routing → archive/ (FAIL 探索归档)
       step3.8+ docstring 修正 (2026 预测未实现, 声明用 step3.8 Part C proxy)
 13:30 文档补齐: latest_16.log + sum_13 + migration_prompt/INDEX/CONSTITUTION/PLAN/README 更新
-测试状态: 全部重跑可复现, 数字总表逐行有复现命令
+14:30 论文材料区 (docs/materials/) 初始化: 00总览 + 口径声明大全 + 数字总表 + 路线叙事
+      + 图素材清单 + 论文大纲 + Q1/Q2章节初稿 (math-materials/math-paper 技能驱动)
+15:00 全项目数字口径验收: 残留检查通过 (0.732/0.602 均为标注性引用), 提交 9 组 (ahead 9 未push)
+15:10 会话收尾:
+      - 卸载 base 环境误装的 timesfm 2.0.2 (用户指定 mathorcup 环境为 timesfm 运行环境)
+      - pip 缓存无 timesfm 残留; mathorcup 环境 timesfm 验证正常 (D:\Anaconda\envs\mathorcup)
+      - materials 区登记入 migration_prompt + INDEX
+      - 待用户安排论文协作 (Q3/Q4章节/图表口径/未分区对照实验)
+测试状态: 全部重跑可复现, 数字总表逐行有复现命令, git 工作区干净

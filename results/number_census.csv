@@ -1,0 +1,30 @@
+question,metric,value,std,caliber,params,source_script,repro_command,doc_links,note
+Q1,NTU all-sample R2 (in-sample),0.8072,,in-sample full-data (params optimized on full data),A={T1:400,T2:250,T3:30}+Balance A_same=100/A_diff=20 RL_med=6.09 Q_med=44,step1.7_final_cstr.py,python step1.7_final_cstr.py,sum_7|PLAN.md|README.md|step1.9+_summary_report.py,FINAL paper number (D1 caliber)
+Q1,NTU all-sample R2 (TS-CV honest),0.7369,0.1009,5-fold TS-CV fixed params evaluated on val folds,A_T1=400 A_T2=250 A_same=100 A_diff=20 RL_med=6.09 Q_med=44,step1.7+_tscv_validation.py,python step1.7+_tscv_validation.py --rl-med 6.09 --q-med 44.0,sum_13 (new),REPLACES obsolete 0.732/0.7318 (old single-A=141.3 CV); D1 caliber
+Q1,NTU all-sample R2 (in-sample alt params),0.7553,,in-sample with Q3-optimized medians,A_T1=400 A_T2=250 RL_med=8.0 Q_med=48,step1.7+_tscv_validation.py,python step1.7+_tscv_validation.py --rl-med 8.0 --q-med 48,step1.10_verification.json note,D1 alternative NOT used for paper
+Q1,NTU TS-CV R2 (alt params),0.6887,0.1773,5-fold TS-CV with Q3 medians,RL_med=8.0 Q_med=48,step1.7+_tscv_validation.py,python step1.7+_tscv_validation.py --rl-med 8.0 --q-med 48,,D1 alternative NOT used for paper
+Q1,T3 tier R2 (in-sample),0.7880,,in-sample T3 subset,per-tier A + balance 6.09/44,step1.9+_summary_report.py,python step1.9+_summary_report.py,sum_7,paper T3 stress-zone number
+Q1,persistence baseline R2 (in-sample),0.6657,,in-sample one-step persistence,,-,step1.7+_tscv_validation.py in-sample line,,baseline for Q1
+Q1,T3 feature #1 eta_coag,0.335,,SHAP+Permutation robust,T3 subset n=921,step1.4_feature_importance.py,python step1.4_feature_importance.py,sum_5|交接说明 §创新6,paper
+Q1,tau_1 learned peak,4h,,softmax weights lag=2-3,,-,step1.3_tier3_greybox.py,,sum_5|交接说明 §创新4,paper
+Q2,CVR2 log-AR(6)+RidgeCV,0.6955,0.084,5-fold TS-CV log space,alpha=1.0,step2.5_logar_final.py,python step2.5_logar_final.py,sum_8|交接说明 §创新5,paper unchanged
+Q2,tau RW_NTU->FILT,4h,,tri-source cross-validation,,-,step2.5_logar_final.py,,sum_8|交接说明 §创新4,paper
+Q3,CV R2 four-layer routing (oracle FILT known),0.6017,0.2721,5-fold TS-CV uses TRUE FILT in chain (transfer-function caliber),alpha_B=0.34 gamma_W=0.25 C_th=1.0,step3.8_final_stratified.py,python step3.8_final_stratified.py,sum_12|PLAN.md,LEGACY number: oracle caliber (FILT known) with bias table
+Q3,CV R2 oracle (no bias table),0.6165,0.2715,5-fold TS-CV true FILT no bias,alpha_B=0.34 gamma_W=0.25 C_th=1.0,step3.8+_forecast_cstr.py oracle mode,python step3.8+_forecast_cstr.py,sum_13 (new),oracle upper bound - matches step3.9 routing
+Q3,CV R2 deployable (AR6 FILT forecast),0.4853,0.3044,5-fold TS-CV AR(6)-forecast FILT + persisted CW/Q (honest deployable),alpha_B=0.34 gamma_W=0.25 C_th=1.0 per-fold AR6,step3.8+_forecast_cstr.py forecast mode,python step3.8+_forecast_cstr.py,sum_13 (new),D2 recommended paper number; FILT-forecast penalty 0.1312
+Q3,persistence baseline (multi-step),-3.3488,7.9894,7-step all-persistence (NOT comparable to Q1 one-step persist),,-,step3.8+_forecast_cstr.py,,,diagnostic only - do NOT cite as baseline in paper (extreme negative; use oracle/forecast decomposition instead)
+Q3,FILT forecast penalty,0.1312,,oracle - forecast R2 drop,,-,step3.8+_forecast_cstr.py,,sum_13 (new),decomposition point for paper narrative
+Q3,2026 Feb 1/10/20 predictions,see results/q3_final_predictions.csv,,2025 same-date proxy (CUMCM convention; 2026 data monthly files have missing NTU/partial),,step3.8_final_stratified.py Part C,python step3.8_final_stratified.py,PLAN 3.5,paper must state proxy caliber explicitly
+Q4,capture rate (prospective CSTR-predicted NTU),0.5799,,"prospective mode USE_ACTUAL_NTU=False (CSTR-predicted NTU, no circularity)",w1=0.127 w2=0.613 w3=0.260,step4.0+4.1+4.2 (current),python step4.0_risk_scoring.py && python step4.1_jenks_classification.py && python step4.2_dual_validation.py,sum_13 (new),D3 alternatives - prospective honest but weaker (57.99% vs 88.76%)
+Q4,false alarm rate (prospective),0.0121,,prospective mode,,-,step4.2_dual_validation.py,,sum_13 (new),D3
+Q4,Kappa full (prospective),0.2961,,prospective mode,,-,step4.2_dual_validation.py,,sum_13 (new),D3
+Q4,Kappa comfort (prospective),0.8774,,prospective mode,,-,step4.2_dual_validation.py,,sum_13 (new),D3
+Q4,capture rate (retrospective actual NTU),0.8876,,retrospective mode USE_ACTUAL_NTU=True (sum_9 reported),w1=0.087 w2=0.806 w3=0.106,step4.0+4.1+4.2 (original committed),python step4.0_risk_scoring.py (USE_ACTUAL_NTU=True) && step4.1 && step4.2,sum_9|PLAN.md,paper if D3 chooses retrospective
+Q4,false alarm rate (retrospective),0.0,,retrospective mode,,-,step4.2_dual_validation.py (original),,sum_9,paper if D3 chooses retrospective
+Q4,avg early warning,20h (10.1 steps),,retrospective mode,,-,step4.2_dual_validation.py (original),,sum_9,paper if D3 chooses retrospective
+Q4,Kappa full (retrospective),0.522,,retrospective mode,,-,step4.2_dual_validation.py (original),,sum_9,paper if D3 chooses retrospective
+Q4,2026 March grades,1xG1 11xG2 0xG3 0xG4,,2026-03 prospective,,-,step4.4_predict_2026.py,python step4.4_predict_2026.py,sum_9,note: grade calib differs from sum_9 (prospective breaks)
+TimesFM,zero-shot baseline Feb means,0.0951/0.0946/0.0925,,zero-shot 200M no physics,context=4375 horizon=36,step5.1_timesfm_baseline.py,python step5.1_timesfm_baseline.py (mathorcup env),sum_11|交接说明,zero-shot fails (mean ~0.09, actual FILT mean 0.21)
+Step1.10,learnable beta/theta NN best,0.5884,0.2435,TS-CV NN vs hand tier-A,NN 89 params,step1.10_learnable_beta.py,python step1.10_learnable_beta.py,sum_13 (new),FAIL: NN 0.588 < tier-A 0.689 - archived
+Step3.9,NN learned routing best,0.0905,1.3067,TS-CV NN-2way,NN softmax weights,step3.9_learnable_routing.py,python step3.9_learnable_routing.py,sum_13 (new),FAIL: NN 0.091 < if-else 0.6165 - archived
+Step3.9,diagnostics residual learning,all negative,,TS-CV residual/log/huber variants,,-,step3.9_diagnostics.py,python step3.9_diagnostics.py,sum_13 (new),diagnostic evidence: routing 0.6165 > cstr_only 0.4834 > persist

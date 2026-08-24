@@ -1,4 +1,4 @@
-﻿# Migration Prompt — B题项目入口
+# Migration Prompt — B题项目入口
 
 ## Step 1: 加载 project-reference skill
 
@@ -21,15 +21,17 @@
 - `Code/docs/sums/sum_3_Q1实验结果与函数关系.md` — 旧XGBoost方案(R²=0.34)
 - `Code/docs/sums/sum_4_Q2时滞估计与动态建模实验结果.md` — 旧TCN方案(R²=-0.15)
 - `Code/docs/sums/sum_4b_灰箱模型重构与双模态阈值发现.md` — 双模CSTR重构(队友)
-- **`Code/docs/sums/sum_5_Q1三级分层灰箱建模.md`** — **三级方案 (NTU R²=0.727)**
+- **`Code/docs/sums/sum_5_Q1三级分层灰箱建模.md`** — **三级方案 (CSTR 全量 R²=0.727, CV=0.732 属旧单A口径, 勿引用)**
 - `Code/docs/sums/sum_6_Q1阈值敏感性分析.md` — 阈值 0.05/0.15 验证为全局最优
-- **`Code/docs/sums/sum_7_A线CSTR物理模型细化.md`** — **A线终点: 分tier A + 平衡检测器, R²=0.807**
+- **`Code/docs/sums/sum_7_A线CSTR物理模型细化.md`** — **A线终点: 分tier A + 平衡检测器, R²=0.807 (in-sample)**
 - `Code/docs/sums/sum_8_Q2_log_AR_final.md` — Q2 log-AR(6)+RidgeCV 终版
-- `Code/docs/sums/sum_9_Q4三维风险评分与四级分类.md` — Q4 方案
+- `Code/docs/sums/sum_9_Q4三维风险评分与四级分类.md` — Q4 方案（回顾口径）
 - `Code/docs/sums/sum_10_project_cleanup.md` — 项目重构记录
 - **`Code/docs/sums/sum_11_模型改进探索全历程.md`** — **Q2/Q3改进探索: 五次尝试全失败, 闭环掩蔽效应五重证据链**
-- **`Code/docs/sums/sum_12_Q3四层条件路由最终方案.md`** — **Q3终局: 四层条件路由, CV R²=0.602**
-- **`Code/docs/sums/sum_11_Q3模型收敛.md`** — Q3融合策略对比(队友)
+- **`Code/docs/sums/sum_12_Q3四层条件路由最终方案.md`** — **Q3终局: 四层条件路由（注意: 0.602 为 oracle 口径, FILT 真值已知; 部署口径见 sum_13）**
+- **`Code/docs/sums/sum_13_诚实验证与数字口径统一.md`** — **⚠️ 必需: 数字口径总表 (Q1: 0.807/0.737, Q3: 0.485/0.617, Q4 前瞻/回顾双口径), 论文唯一数字源 `results/number_census.csv`**
+- `Code/docs/代码手→论文手交接说明.md` — 论文手交接材料（创新点+叙事+图表清单）
+- `Code/docs/sums/sum_11_Q3模型收敛.md` — Q3融合策略对比(队友)
 
 ### 必读（方法论学习，agent面向）
 - `Code/Reference/sums/sum_1_Q1特征筛选学习总结.md`
@@ -47,29 +49,33 @@
 - `Code/Reference/docs/INDEX.md`
 
 ### 速读（了解近期动态）
+- `Code/docs/logs/latest_16.log` — 遗留收编: 诚实CV验证 + 口径统一 + TimesFM收尾 (2026-07-27)
 - `Code/docs/logs/latest_15.log` — Q3终局开发 + 文档整理 (2026-07-26)
-- `Code/docs/logs/latest_14.log` — 数学命名规范审查 (2026-07-26)
 
 ### 必读（代码现状）
-- 运行 `python step3.8_final_stratified.py` 获取Q3完整CV+消融报告
+- 运行 `python step3.8_final_stratified.py` 获取Q3完整CV+消融报告（oracle口径）
+- 运行 `python step3.8+_forecast_cstr.py` 获取Q3诚实部署口径 (forecast R²=0.485)
+- 运行 `python step1.7+_tscv_validation.py` 获取Q1诚实TS-CV（仿论文主口径: R²=0.737）
 - 运行 `python step1.9+_summary_report.py` 获取完整汇总表
+- 数字总表: `results/number_census.csv` — 论文唯一数字源
 
 ---
 
 ## Step 3: 恢复当前任务上下文
 
 ### 已完成（按Phase）
-- **Phase 1 (Q1)**: 三级分层灰箱 + A线物理细化已闭环。最终公式 (step1.7_final): 分tier CSTR + Balance Detector, A={T1:400, T2:250, T3:30} + A_same=100/A_diff=20, 全量 R²=**0.807**。T3特征重要性: η_coag#1(0.335)。
+- **Phase 1 (Q1)**: 三级分层灰箱 + A线物理细化已闭环。最终公式 (step1.7_final): 分tier CSTR + Balance Detector, A={T1:400, T2:250, T3:30} + A_same=100/A_diff=20 (RL_med=6.09/Q_med=44), 全量 in-sample R²=**0.807** (step1.7权威值), 诚实 TS-CV R²=**0.737** (step1.7+_tscv_validation)。T3特征重要性: η_coag#1(0.335)。
 - **Phase 2 (Q2)**: 双模阈值诊断已闭环。CCF/MIC/TE三方法全部失效。AR(6) R²=0.52 > TCN R²=-0.15。最终: log-AR(6)+RidgeCV, CV R²=0.6955。**五次改进尝试(方向感知/加权/去惯性等)全失败——详见 sum_11 + Reference sum_10。**
-- **Phase 3 (Q3)**: 四层条件路由已闭环。final: step3.8_final_stratified.py。天型 A/B/C_strong/C_weak 分策略预测，CSTR链从NTU(1:00)启动。参数: α_B=0.34, γ_W=0.25, C_th=1.0 (2QL参数+1阈值)。5-fold CV R²=**0.602**。探索历程: 0.195→0.251→0.397→0.485→0.576→0.602。详见 sum_12 + Reference sum_11。
-- **Phase 4 (Q4)**: 三维风险评分(融合Q1/Q2) + 分区独立Jenks + 事件回溯验证已闭环。超标捕获率88.76%, 虚警率0%, 提前预警20h。f₂维度已接入per-tier CSTR β₂。
+- **Phase 3 (Q3)**: 四层条件路由已闭环。final: step3.8 (oracle口径 R²=0.602, FILT真值已知) + step3.8+ (诚实部署口径: **forecast R²=0.485**, oracle上限 0.617, FILT预测代价 0.131)。天型 A/B/C_strong/C_weak 分策略预测，CSTR链从NTU(1:00)启动。参数: α_B=0.34, γ_W=0.25, C_th=1.0。探索历程: 0.195→0.251→0.397→0.485→0.576→0.602。详见 sum_12 + Reference sum_11 + **sum_13**。
+- **Phase 4 (Q4)**: 三维风险评分(融合Q1/Q2) + 分区独立Jenks + 事件回溯验证已闭环。**双口径**: 前瞻模式(CSTR预测NTU, 无循环论证): 捕获率57.99%, 虚警1.21%, Kappa舒适区0.877; 回顾模式(实际NTU): 捕获率88.76%, 虚警0%, 提前预警20h。f₂维度已接入per-tier CSTR β₂。
+- **Phase 5 (跨题)**: 消融汇总 step5.0 ✅, TimesFM零样本基线 step5.1 ✅ (失败基线证毕, 均值~0.094), 终版汇总 step5.2 ✅, 论文图表 step5.3 ✅
 
 ### 待完成（按优先级）
-1. **论文写作**: 基于现有代码+sums+五重证据链撰写全文
-2. **Step1.8 模型对比**: 物理重构模型(Langmuir+CSTR)已运行, R²=-0.29被淘汰, 对比表已产出
+1. **论文写作**: 基于现有代码+sums+五重证据链撰写全文; **数字源 = results/number_census.csv (sum_13)**
+2. Step1.8 模型对比: 物理重构模型(Langmuir+CSTR)已运行, R²=-0.29被淘汰, 对比表已产出
 
 ### 当前聚焦
-**论文写作** — 全部模型已稳定, 消融+基线+敏感性+图表均已完成
+**论文写作** — 全部模型已稳定, 消融+基线+敏感性+图表均已完成, 数字口径已统一
 
 ---
 
@@ -82,7 +88,8 @@
 5. 全部模型在2025年数据上用TimeSeriesSplit验证, 2026年仅做最终预测
 6. 时滞参数不硬传给Q3——用注意力机制自适应学习
 7. math-name命名规范: `step{N}.{M}_{description}.py`
-8. **闭环掩蔽效应——禁止再尝试"方向感知/去惯性/流态修正"类改进**: 五重证据链已证明闭环水处理系统中物理诊断信号在预测层面不可利用。CSTR公式已完整编码流态效应。所有"基于物理直觉的CSTR结构修正"均已被验证为无效(详见 sum_11 + Reference sum_10)。Q2 log-AR(6)已达本架构天花板(CV R²=0.696)。
+8. **闭环掩蔽效应——禁止再尝试"方向感知/去惯性/流态修正"类改进**: 五重证据链已证明闭环水处理系统中物理诊断信号在预测层面不可利用。CSTR公式已完整编码流态效应。所有"基于物理直觉的CSTR结构修正"均已被验证为无效(详见 sum_11 + Reference sum_10)。Q2 log-AR(6)已达本架构天花板(CV R²=0.696)。**step1.10/step3.9 NN可学习实验同样失败 (sum_13), 已归档。**
+9. **数字口径纪律 (sum_13)**: 论文数字一律以 `results/number_census.csv` 为准; Q1 报 in-sample 0.807 + TS-CV 0.737 (RL_med=6.09/Q_med=44); Q3 报 forecast 0.485 主口径 + oracle 0.617 上限 (0.602 为 legacy oracle 口径, 引用必须标注); Q4 主报前瞻口径, 回顾口径作上限参考; "0.732" 已废弃 (旧单A=141.3口径)
 
 ---
 
@@ -90,5 +97,5 @@
 
 1. 先读 `Reference/docs/Phase*/` 三文件
 2. 再看 `Reference/sums/` 对应学习记录
-3. 仍不确定 → 检查 `Code/docs/sums/sum_5_Q1三级分层灰箱建模.md`
+3. 仍不确定 → 检查 `Code/docs/sums/sum_5_Q1三级分层灰箱建模.md` + `sum_13_诚实验证与数字口径统一.md`
 4. 仍不确定 → 直接提问

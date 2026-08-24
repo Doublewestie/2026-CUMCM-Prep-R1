@@ -1,6 +1,6 @@
 # CONSTITUTION.md — 项目硬约束速查
 
-> 创建: 2026-07-24 | 最后更新: 2026-07-26
+> 创建: 2026-07-24 | 最后更新: 2026-07-27 (sum_13 口径统一)
 
 ---
 
@@ -23,15 +23,19 @@
 | A_T2 | 250 | T2 (0.05 < FILT <= 0.15) — 不可调 |
 | A_T3_same | 100 | T3, RL·Q 同向 (均衡态) — 不可调 (sum_9) |
 | A_T3_diff | 20 | T3, RL·Q 反向 (失配态) — 不可调 (sum_9) |
-| RL_med | 8.0 | Q3 优化后的 Balance Detector RL 阈值 (原 6.09) |
-| Q_med | 48.0 | Q3 优化后的 Balance Detector Q 阈值 (原 44.0) |
+| **RL_med | 6.09** | **⚠️ 2026-07-27 口径统一 (sum_13 D1): 恢复 step1.7/sum_7 原始值; Q3 曾用 8.0 优化值, 现作为备选 (`--rl-med 8.0`)** |
+| **Q_med | 44.0** | **⚠️ 同上: 恢复原始 44.0; Q3 优化备选 48.0** |
 | C_th | 1.0 | CSTR 适用阈值, FILT≥1.0 时 CSTR 可靠 |
 | ALPHA_B | 0.34 | Type B 中 CSTR 混合权重 |
 | GAMMA_W | 0.25 | C_weak 区 CSTR 阻尼因子 |
 
 **CSTR 公式 (继承 Q1 step1.7):** NTU(t)=β₂·NTU(t-1)+(1-β₂)·FILT(t), β₂=exp(-2h/θ), θ=A·CW/Q.
 
-**Q3 四层路由 (step3.8_final):** 全量 CV R²=**0.602**.
+**Q1 数字口径 (sum_13):** in-sample R²=**0.807** (step1.7 权威值), 诚实 5-fold TS-CV R²=**0.737** (step1.7+_tscv_validation, RL_med=6.09/Q_med=44). ⚠️ "CV 5折=0.732" 已废弃 (旧单 A=141.3 口径).
+
+**Q3 四层路由 (step3.8/step3.8+):** oracle (FILT真值) CV R²=**0.617**; **部署口径 (AR(6)预测FILT) CV R²=0.485** (FILT预测代价 0.131). ⚠️ 0.602 (step3.8) 为 oracle+偏置表口径, 引用必须标注.
+
+**Q4 双口径 (step4.0 USE_ACTUAL_NTU):** 前瞻 (CSTR预测NTU, 无循环论证): 捕获率 57.99%, 虚警 1.21%, Kappa舒适区 0.877; 回顾 (实际NTU): 捕获率 88.76%, 虚警 0%, 提前预警 20h. **论文主报前瞻, 回顾作上限参考.**
 
 ## 3. 三级方案参数
 
@@ -47,12 +51,13 @@
 
 | 接口 | 形状 | 说明 |
 |------|------|------|
-| clean_data.csv | (4375, 30+) | 清洗后完整数据 |
+| clean_data.csv | (4375, 30+) | 清洗后完整数据 (output/, 不入库) |
 | X_all.npy | (n, 15) float32 | 精简特征矩阵(Q3源A用) |
 | Y_all.npy | (n,) float32 | NTU目标(原始空间) |
 | tier_labels.npy | (4375,) int | 三级标签 {1,2,3} |
 | tier3_factor_importance.csv | (17, 6) | T3特征重要性: η_coag#1(0.335) |
 | tier3_best_params.json | — | 最佳T3配置: fb=linear, gamma=sigmoid, λ₃=0.5 |
+| **number_census.csv** | — | **数字总表 (results/): 论文唯一数字源, 每行含复现命令** |
 
 ## 5. 不可变决策
 
@@ -64,8 +69,11 @@
 6. **物理约束只在违规数据上激活** — 违规率0%时用硬裁剪
 7. **统计时滞估计不再使用** — CCF/MIC/TE全部失效, 改用softmax可学习τ₁
 8. **Reference/ 位于 git 根目录内 (`Code/Reference/`)** — 随代码一同版本控制
-5. **全部模型验证在2025数据TS-CV** — 2026仅做最终预测
-6. **NTU空间工作(非Box-Cox空间)** — 灰箱模型不依赖变换
+9. **全部模型验证在2025数据TS-CV** — 2026仅做最终预测
+10. **NTU空间工作(非Box-Cox空间)** — 灰箱模型不依赖变换
+11. **平衡检测器阈值 RL_med/Q_med = 6.09/44.0** — sum_13 D1 决策, 与 step1.7 同源; Q3 优化值 8.0/48 仅作参数敏感性备选
+12. **数字口径纪律 (sum_13)** — 论文数字一律引用 number_census.csv; 0.732/0.602/0.6877 等过时或备选口径引用必须标注
+13. **NN/可学习实验已归档** — step1.10/step3.9_learnable_routing (FAIL) → archive/, 不再重试 (闭环掩蔽效应补充证据)
 
 ## 5. 测试纪律
 
@@ -78,6 +86,8 @@
 
 | 问题 | 影响 | 状态 |
 |------|:---:|:---:|
-| CSTR违规率57%(NTU_pred > FILT) | Q1应力区模型欠约束 | 待修 |
+| CSTR违规率57%(NTU_pred > FILT) | Q1应力区模型欠约束 | 待修(已硬裁剪缓解) |
 | 段1全参数触底 | Q1无法区分ALUM/CLR效应 | 可接受(物理发现) |
 | Reference/docs/体系不完整 | 新agent认知重建成本高 | 逐步填充 |
+| output/ 不入git | clone后需先跑 step0 系列生成依赖 (clean_data.csv/bias_table.json等) | 已知限制 (sum_13) |
+| 2026数据每月仅1天且2月NTU缺失 | Q3 2026预测只能用2025同日期proxy | CUMCM惯例, 论文声明 |

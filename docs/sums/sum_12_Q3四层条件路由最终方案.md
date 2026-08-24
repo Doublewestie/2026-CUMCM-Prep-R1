@@ -1,6 +1,10 @@
 # Sum 12: Q3 四层条件路由 — 最终方案
 
 > 从 physical RF (R²=0.195) 到四层条件路由 (R²=0.602) 的系统探索 | 2026-07-26
+>
+> ⚠️ **口径声明 (sum_13, 2026-07-27)**: 本文 0.602 为 **oracle 口径** (CSTR 链使用真实 FILT(t), 含偏置表)。
+> 诚实部署口径 (AR(6) 预测 FILT): **CV R²=0.485**, oracle 无偏置上限 0.617 (step3.8+_forecast_cstr.py)。
+> 论文数字一律以 `results/number_census.csv` 为准。
 
 ---
 

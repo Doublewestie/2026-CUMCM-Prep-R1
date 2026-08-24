@@ -1,6 +1,6 @@
-﻿# INDEX.md — 论文公式→代码→文档全映射
+# INDEX.md — 论文公式→代码→文档全映射
 
-> 创建: 2026-07-24 | 最后更新: 2026-07-25
+> 创建: 2026-07-24 | 最后更新: 2026-07-27 (sum_13 口径统一, 新增诚实验证工具)
 
 ---
 
@@ -11,6 +11,7 @@
 | 文档 | 覆盖范围 |
 |------|------|
 | `Code/docs/specs/2026-07-23-architecture-design.md` | 原始双源RF架构设计 (参考) |
+| `Code/docs/specs/2026-07-24-Q1三级分层灰箱-design.md` | Q1三级灰箱方案 (当前方案) |
 
 ### sums (决策历史, `Code/docs/sums/`)
 
@@ -21,15 +22,18 @@
 | sum_3 | Q1 XGBoost原始方案结果 | R²=0.34, FILT_NTU#1, 高值区低估40%+ |
 | sum_4 | Q2时滞估计+TCN | TCN R²=-0.15, AR(6)R²=0.52 |
 | sum_4b | 灰箱重构+双模阈值 (队友版) | V4_DualMode R²=0.53, 阈值0.15 |
-| **sum_5** | **Q1三级分层灰箱 (当前方案)** | **CSTR NTU R²=0.727, T3 η_coag#1** |
-| sum_6 | Q1阈值敏感性分析 | 0.05/0.15 数据驱动验证为全局最优 |
-| **sum_7** | **A线CSTR物理模型细化全历程** | **分tier A: R²=0.783, A={400,250,30}** |
-| **sum_8** | **Q2 log(FILT) AR(6)+RidgeCV 终版** | **log-AR(6) R²=0.6955 CV, tau=4h/6h/2h** |
-| sum_9 | Q4三维风险评分与四级分类 | 3D评分+分区Jenks, 捕获率88.76% |
+| **sum_5_Q1** | **Q1三级分层灰箱 (当前方案)** | **CSTR NTU R²=0.727 (旧全量), T3 η_coag#1** |
+| sum_5_Q2 | Q2时滞验证与最终结论 (队友) | 事件CCF中水位τ=4h ✅ |
+| sum_6_Q1 | Q1阈值敏感性分析 | 0.05/0.15 数据驱动验证为全局最优 |
+| sum_6_Q2 | Q2物理结构化时滞辨识+闭环掩蔽 (队友) | Langmuir 7参数扫τ全失效 |
+| **sum_7** | **A线CSTR物理模型细化全历程** | **分tier A: in-sample R²=0.807, A={400,250,30}+平衡(6.09/44)** |
+| **sum_8** | **Q2 log(FILT) AR(6)+RidgeCV 终版** | **log-AR(6) CV R²=0.6955, tau=4h/6h/2h** |
+| sum_9 | Q4三维风险评分与四级分类 | 3D评分+分区Jenks (回顾口径: 捕获率88.76%) |
 | sum_10 | 项目清理与重构 | 统一数据加载器, TCN代码移除 |
 | sum_11 | 模型改进探索全历程 | Q2/Q3五次尝试全失败, 闭环掩蔽效应五重证据链 |
 | sum_11_Q3 | Q3融合策略对比与模型收敛 (队友) | 双RF / 线性融合 / ablations |
-| **sum_12** | **Q3四层条件路由最终方案** | **A/B/C_strong/C_weak, CV R²=0.602** |
+| **sum_12** | **Q3四层条件路由最终方案** | **A/B/C_strong/C_weak; ⚠️ 0.602 为 oracle 口径 (FILT真值已知)** |
+| **sum_13** | **诚实验证与数字口径统一 (2026-07-27)** | **⚠️ 论文唯一数字源: results/number_census.csv; Q1=0.807/0.737, Q3=0.485/0.617, Q4 双口径** |
 
 ### Reference/sums/ (方法论学习, agent面向)
 
@@ -41,31 +45,27 @@
 | sum_4 | Q2双模阈值诊断学习总结 | Jenks/CorrBreak/GMM, 操作员反馈 |
 | sum_5 | Q3-Q5方法论前瞻 | 已验证发现+约束+教训清单 |
 | sum_6 | Q1阈值敏感性分析 | 离散分布特征, 相关性断层扫描 |
+| sum_6_Q2 | Q2伪数据验证与Langmuir模型学习 (队友) | 伪数据τ识别验证方法正确性 |
 | **sum_7** | **A线CSTR物理模型细化** | **分tier A发现, N-CSTR/Fr/加速度消融, 5项失败+1项突破** |
 | **sum_8** | **B线负反馈控制回路探索** | **Granger/IRF/eta 隐藏反馈/状态空间/三项修正** |
 | sum_10 | 闭环掩蔽效应五重证据链 | Agent认知: 五次改进全历程 + 失败模式分类 + 设计原则 |
 | **sum_11** | **Q3四层条件路由方法论** | **Q1→Q3迁移验证, γ阻尼, C_th扫描, 失败模式分类** |
 
+### 论文材料 (docs/)
+
+| 文档 | 内容 |
+|:---:|------|
+| `Code/docs/代码手→论文手交接说明.md` | 创新点★★★10条+叙事结构+图表优先级+数字引用 (论文手交接) |
+
 ### logs (`Code/docs/logs/`)
 
 | Log | 覆盖期间 | 主题 |
 |:---:|------|------|
-| latest_0 | 项目初始化 | 初始日志 |
-| latest_1 | Stage 0+1 | 数据清洗+101维XGBoost |
-| latest_2 | Q1调参 | 误差分析+LGBM调参 |
-| latest_3 | Q2旧方案 | TCN+消融, 统计方法全失败 |
-| latest_4 | Q1三级灰箱重构 | 三级分区+CSTR+反馈扫参 |
-| latest_5 | 阈值敏感性分析 | T1 0.05 vs 0.06 对比 + T2/T3 扫描 |
-| latest_6 | A线CSTR物理模型细化 | step1.6→1.7→1.7+ 全历程 + 0.3-0.5 诊断 |
-| latest_7 | B线负反馈探索 | Granger/IRF/eta 隐藏反馈/三项修正 |
-| latest_8 | 墙模型+RL×Q规则化 | 墙发现→闭环失败→RL×Q→规则化→5项诊断 |
-| latest_9 | Q2 log-AR 会话 | 队友 Q2 最终模型开发 |
-| latest_10 | 项目清理 | 队友项目重构会话 |
-| latest_11 | — | 队友会话 |
-| latest_12 | — | 队友会话 |
+| latest_0~12 | 项目初始化~Q2 | 见旧版 INDEX (sum_10 记录) |
 | latest_13 | Q2/Q3改进探索 | 8次尝试全部记录 |
 | latest_14 | 命名规范审查 | math-name 全项目审计 |
-| **latest_15** | **Q3终局开发** | **四层条件路由收敛, 文档整理** |
+| latest_15 | Q3终局开发 | 四层条件路由收敛, 文档整理 |
+| **latest_16** | **遗留收编 (2026-07-27)** | **诚实CV验证 + 口径统一 + TimesFM收尾 + FAIL归档** |
 
 ---
 
@@ -90,10 +90,14 @@
 | `step1.4_feature_importance.py` | T3特征重要性: SHAP+Permutation, η_coag#1 | ~100 |
 | `step1.5_visualization.py` | 三级可视化 + CSTR预测图 (分tier A) | ~135 |
 | `step1.6_cstr_refinement.py` | N-CSTR/延迟/变面积/管壁释放 消融 (探索档案) | ~330 |
-| `step1.7_final_cstr.py` | **分tier A + 四阶段扫参 (当前最优)** | ~400 |
-| `step1.9+_summary_report.py` | 全流程汇总表 | ~116 |
+| `step1.7_final_cstr.py` | **分tier A + 四阶段扫参 (权威 in-sample R²=0.8072)** | ~400 |
+| `step1.7+_cstr_figures.py` | Q1 图表生成 | — |
+| **`step1.7+_tscv_validation.py`** | **⚠️ Q1 诚实 TS-CV (sum_13 新增): 固定物理参数(先验)+5折TS-CV, 默认 RL_med=6.09/Q_med=44 → TS-CV R²=0.7369; 参数可配置 (--rl-med/--q-med)** | ~230 |
+| `step1.9_pysical_reconstruct.py` | 物理重构 (已淘汰, R²=-0.29) | — |
+| `step1.9+_summary_report.py` | 全流程汇总表 (in-sample 0.8072) | ~116 |
+| `archive/step1.10_learnable_beta.py` | NN 学习可学习 β/θ (FAIL: 0.588<0.689, 2026-07-27 归档) | ~380 |
 
-**核心结果 (step1.7_final)**: A = {T1:400, T2:250, T3:30}, 全量 R²=**0.7827** (vs 原 XGBoost 0.34, vs CSTR基线 0.727)
+**核心结果 (step1.7_final)**: A = {T1:400, T2:250, T3:30} + Balance (RL_med=6.09/Q_med=44), in-sample R²=**0.8072**, **诚实 TS-CV R²=0.7369** (step1.7+_tscv_validation). 论文报双口径.
 
 ### Q2 双模诊断方案 (队友, step2.x)
 
@@ -104,15 +108,21 @@
 | `step2.1+_closed_loop_decompose.py` | 操作员策略OLS分解(失败) | ~220 |
 | `step2.2_baseline_comparison.py` | 应力区AR(6)/ARMAX基线 | ~90 |
 | `step2.3_comfort_report.py` | 舒适区统计报告 | ~55 |
+| `step2.5_logar_final.py` | **log-AR(6)+RidgeCV 最终模型 (CV R²=0.6955)** | — |
 | `step2.5_visualization.py` | 双模分区+操作员策略图 | ~140 |
+| `step2.7_generate_figures.py` | Q2 图表生成 | — |
+| `step2_shared.py` | 共享: 数据加载 + AR6Predictor 类 (备用, 全量系数, 勿用于诚实CV) | — |
 
 ### Q3 四层条件路由方案 (step3.8)
 
 | 文件 | 功能 | 行数 |
 |------|------|:---:|
-| `step3.8_final_stratified.py` | **Q3最终: 四层分类+全局参数+CV验证+消融表** | ~280 |
+| `step3.8_final_stratified.py` | **Q3 终版 (oracle 口径): 四层分类+全局参数+CV+消融表; CV R²=0.6017 (FILT真值已知+偏置表); 2026 Feb 预测 (2025同日期proxy)** | ~320 |
+| **`step3.8+_forecast_cstr.py`** | **⚠️ Q3 诚实部署口径 (sum_13 新增): AR(6)预测FILT→CSTR链; forecast R²=0.4853, oracle 0.6165, 代价0.131** | ~340 |
+| `step3.9_diagnostics.py` | 路由/损失诊断 (blend/residual/log/huber 全负) | — |
+| `archive/step3.9_learnable_routing.py` | NN softmax 连续混合 (FAIL: 0.09<if-else 0.617, 2026-07-27 归档) | — |
 
-**核心结果**: 四层条件路由 (A/B/C_strong/C_weak), 2QL参数+1阈值, CV R²=**0.602**
+**核心结果 (sum_13 口径)**: oracle (FILT真值) CV R²=**0.617**; **部署口径 (AR(6) FILT) CV R²=0.485**; 2参数+1阈值 (α=0.34, γ=0.25, C_th=1.0)
 
 **旧版 (archive/)**:
 | 文件 | 功能 |
@@ -124,17 +134,28 @@
 | `archive/step3.4_sensitivity.py` | Sobol敏感性分析 |
 | `archive/step3.5_visualization.py` | 原Q3可视化 |
 
-### Q4-Q5 (已完成部分)
+### Q4-Q5 (已完成)
 
 | 文件 | 功能 | 状态 |
 |------|------|:---:|
-| `step3.0_source_a_multivariate.py` | Q3源A: TCN→GRU | 空骨架 |
-| `step3.1_source_b_univariate.py` | Q3源B: N-BEATS/TimesFM | 空骨架 |
-| `step3.2_meta_feature_matrix.py` | Q3: RF元学习器 | 空骨架 |
-| `step3.3_sobol_sensitivity.py` | Q3: Sobol敏感性 | 空骨架 |
-| `step3.5_visualization.py` | Q3: 图表 | 空骨架 |
-| `step4.0~step4.5` | Q4: 风险评分+Jenks+FCE | 空骨架 |
-| `step5.0~step5.1` | 跨题消融+TimesFM基线 | 部分完成 |
+| `step4.0_risk_scoring.py` | 三维风险评分+熵权法; **USE_ACTUAL_NTU 双模式 (前瞻CSTR预测NTU / 回顾实际NTU)** | ✅ |
+| `step4.1_jenks_classification.py` | 分区独立Jenks → 统一四级 | ✅ |
+| `step4.2_dual_validation.py` | FCE+Jenks Kappa/Bootstrap/事件回溯 | ✅ |
+| `step4.4_predict_2026.py` | 2026-03 逐日风险分类 → Excel | ✅ |
+| `step4.5_visualization.py` | Q4 图表 | ✅ |
+| `step5.0_ablation.py` | Q2 log-AR 消融 (8配置) | ✅ |
+| `step5.1_timesfm_baseline.py` | **TimesFM 2.5 零样本基线 (2026-07-27 收尾: 预测均值~0.094, 失败证毕; 需在 mathorcup 环境运行)** | ✅ |
+| `step5.2_final_summary.py` | 终版汇总 | ✅ |
+| `step5.3_package_figures.py` | 论文图表 (300dpi) | ✅ |
+
+### 诚实验证工具 (sum_13 新增, 论文数字源)
+
+| 文件 | 功能 |
+|------|------|
+| `results/number_census.csv` | **论文唯一数字总表 (每行含指标/口径/参数/复现命令/文档引用)** |
+| `step1.7+_tscv_validation.py` | Q1 诚实 TS-CV (R²=0.737 @ 6.09/44) |
+| `step3.8+_forecast_cstr.py` | Q3 诚实部署口径 (forecast R²=0.485) |
+| `step3.9_diagnostics.py` | Q3 路由/损失诊断 (routing 最优) |
 
 ---
 
@@ -169,4 +190,8 @@ clean_data.csv (4375行)
 | F6 | 舒适区r(FILT,NTU)=0.03, 应力区=0.79 | 分层相关分析 | step2.3 |
 | F7 | 操作员策略R²=0.0067(线性不可表示) | OLS分解 | step2.1+ |
 | F8 | Q2最终: log-AR(6)+RidgeCV R2=0.6955 CV | TS-CV, FILT空间 | step2.5_logar_final.py |
-| F8 | 清池A为regime-dependent: T1→400, T3→30 | 分tier扫参 + 40组联合扫 | step1.7+ |
+| F9 | 清池A为regime-dependent: T1→400, T3→30 | 分tier扫参 + 40组联合扫 | step1.7+ |
+| F10 | **Q1诚实TS-CV=0.737 (in-sample 0.807), 非0.732** | step1.7+_tscv_validation (6.09/44) | sum_13 |
+| F11 | **Q3部署口径=0.485, oracle=0.617 (0.602为oracle+偏置)** | step3.8+_forecast_cstr | sum_13 |
+| F12 | **NN可学习β/θ/路由全部FAIL (0.588/0.09 < 手调)** | step1.10/step3.9_learnable (归档) | sum_13 |
+| F13 | **TimesFM零样本基线失败 (均值~0.094 < 实际0.21)** | step5.1 (mathorcup环境) | sum_13 |

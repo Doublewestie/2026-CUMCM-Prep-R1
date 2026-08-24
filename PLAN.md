@@ -1,8 +1,8 @@
-﻿## meta
+## meta
 - status: completed
 - current_step: Stage 3 (Q3已闭环) → 论文写作
-- current_task: Q1/Q2/Q3/Q4全部闭环, 论文写作待启动
-- last_updated: 2026-07-26 18:00
+- current_task: Q1/Q2/Q3/Q4全部闭环, 数字口径已统一 (sum_13), 论文写作进行中
+- last_updated: 2026-07-27 14:30
 
 ---
 
@@ -53,7 +53,7 @@
 | 1.2 | T2双路径对比 (对数压缩灰箱最优) | P0 | 1.0 | tier2_comparison.json | ✅ |
 | 1.3 | T3 CSTR+反馈+τ₁+λ₃扫参 (14组实验) | P0 | 1.0 | tier3_sweep_results.csv | ✅ |
 | 1.4 | T3特征重要性 (SHAP+Permutation) | P0 | 1.3 | tier3_factor_importance.csv | ✅ |
-| 1.5 | 全量NTU R²=0.807验证 + CV 5折=0.732 | P0 | 1.3 | step1.9+_summary_report.py | ✅ |
+| 1.5 | 全量NTU in-sample R²=0.807验证 + 诚实TS-CV R²=0.737 (sum_13) | P0 | 1.3 | step1.9+ + step1.7+_tscv_validation | ✅ |
 
 **DoD**：T1/T2/T3三级各自验证通过，NTU全量R²=0.807，T3应力区R²=0.788，特征重要性(η_coag#1)输出 ✅
 
@@ -114,12 +114,13 @@ FILT_NTU以θ=0.15为界分为舒适区(78%)和应力区(22%)，分区建模。�
 | 3.0 | 天型分类器 A/B/C | P0 | 0.5 | day_type_classifier | ✅ |
 | 3.1 | CSTR链 (继承Q1参数) | P0 | Q1 | cstr_chain | ✅ |
 | 3.2 | 全局参数扫描 α, γ, C_th | P0 | 3.0, 3.1 | fixed_params | ✅ |
-| 3.3 | 5-fold CV 验证 | P0 | 3.2 | CV R²=0.602 | ✅ |
+| 3.3 | 5-fold CV 验证 (oracle) | P0 | 3.2 | CV R²=0.602 (oracle+偏置) | ✅ |
+| 3.3+ | 诚实部署口径: AR(6)预测FILT→CSTR链 | P0 | 3.3 | **forecast R²=0.485, oracle 0.617** (step3.8+) | ✅ |
 | 3.4 | 消融矩阵 6行 (RF→集成→分层→Q1式→init→γ阻尼) | P0 | 3.3 | ablation table | ✅ |
-| 3.5 | 2026年2/1,2/10,2/20预测 | P0 | 3.2 | 待数据适配 | ⏳ |
+| 3.5 | 2026年2/1,2/10,2/20预测 | P0 | 3.2 | 2025同日期proxy (2026月文件仅1天且NTU缺失) | ✅ |
 | 3.6 | step3.8_final_stratified.py | P0 | 全部 | 最终代码文件 | ✅ |
 
-**DoD**：CV=0.602 可复现，消融表完整，Q1→Q3方法论迁移验证完毕 ✅
+**DoD**：oracle CV=0.602 可复现（注: 0.602 为 FILT 真值已知口径），诚实部署 forecast=0.485 可复现 (sum_13)，消融表完整，Q1→Q3方法论迁移验证完毕 ✅
 
 ---
 
@@ -144,11 +145,11 @@ FILT_NTU以θ=0.15为界分为舒适区(78%)和应力区(22%)，分区建模。�
 
 | # | 任务 | 优先级 | 依赖 | 产出 | 状态 |
 |:---:|------|:---:|------|------|:---:|
-| 5.0 | TimesFM纯零样本独立基线（不参与融合架构） | P0 | 0.5 | timesfm_baseline.csv | ⏳ |
-| 5.1 | 全流程消融结果汇总表 + 可视化对比 | P0 | 1.2, 2.3, 3.5, 4.2 | ablation_summary.csv | ⏳ |
-| 5.2 | 论文图表打包（300dpi, 统一风格） | P0 | 全部 | paper_figures/ | ⏳ |
+| 5.0 | TimesFM纯零样本独立基线（不参与融合架构） | P0 | 0.5 | timesfm_baseline.csv (mathorcup环境, 均值~0.094失败证毕) | ✅ |
+| 5.1 | 全流程消融结果汇总表 + 可视化对比 | P0 | 1.2, 2.3, 3.5, 4.2 | ablation_summary.csv | ✅ |
+| 5.2 | 论文图表打包（300dpi, 统一风格） | P0 | 全部 | paper_figures/ | ✅ |
 
-**DoD**：消融汇总表，TimesFM基线对比结论
+**DoD**：消融汇总表 ✅，TimesFM基线对比结论 ✅ (2026-07-27 sum_13)
 
 ---
 
@@ -158,7 +159,7 @@ FILT_NTU以θ=0.15为界分为舒适区(78%)和应力区(22%)，分区建模。�
 graph TD
     S0[Stage 0: 预处理 ✅] --> S1[Stage 1: Q1 ✅]
     S0 --> S2[Stage 2: Q2 ✅]
-    S0 --> S5[Stage 5: TimesFM ⏳]
+    S0 --> S5[Stage 5: TimesFM ✅]
     S1 --> S3[Stage 3: Q3 ✅]
     S2 --> S3
     S0 --> S3
@@ -200,16 +201,20 @@ Code/
 ├── step2.5_visualization.py         # [完成] Q2: 图表
 ├── step2.7_generate_figures.py      # [完成] Q2: 图表生成
 ├── step2_shared.py                  # [完成] Q2: 共享工具
-├── step3.8_final_stratified.py      # [完成] Q3: 最终方案 R²=0.602
-├── step4.0_risk_scoring.py          # [完成] Q4: 风险评分
+├── step3.8_final_stratified.py      # [完成] Q3: oracle口径 R²=0.602 (FILT真值已知)
+├── step3.8+_forecast_cstr.py        # [完成] Q3: 诚实部署口径 forecast R²=0.485 (sum_13)
+├── step3.9_diagnostics.py           # [完成] Q3: 路由/损失诊断 (routing最优)
+├── step4.0_risk_scoring.py          # [完成] Q4: 风险评分 (前瞻/回顾双模式)
 ├── step4.1_jenks_classification.py  # [完成] Q4: Jenks断点
 ├── step4.2_dual_validation.py       # [完成] Q4: 双重验证
 ├── step4.4_predict_2026.py          # [完成] Q4: 2026预测
 ├── step4.5_visualization.py         # [完成] Q4: 图表
 ├── step5.0_ablation.py              # [完成] 消融实验
-├── step5.1_timesfm_baseline.py      # [待实现] TimesFM基线
+├── step5.1_timesfm_baseline.py      # [完成] TimesFM基线 (mathorcup环境)
 ├── step5.2_final_summary.py         # [完成] 终版汇总
 ├── step5.3_package_figures.py       # [完成] 论文图表
+├── step1.7+_tscv_validation.py      # [完成] Q1诚实TS-CV (R²=0.737 @ 6.09/44)
+├── results/number_census.csv        # [完成] 论文唯一数字总表 (sum_13)
 ├── archive/                         # 旧版代码存档
 │   ├── step3.0_pipeline_main.py     # Q3 原链式方案
 │   ├── step3.1_residual_train.py   # Q3 原残差RF
@@ -217,13 +222,16 @@ Code/
 │   ├── step3.3_validation.py       # Q3 原CV
 │   ├── step3.4_sensitivity.py      # Q3 原Sobol
 │   ├── step3.5_visualization.py    # Q3 原图表
-│   └── step3.5+_summary_report.py  # Q3 原汇总
-├── output/                          # 模型产出
+│   ├── step3.5+_summary_report.py  # Q3 原汇总
+│   ├── step1.10_learnable_beta.py  # FAIL探索: NN可学习β/θ (2026-07-27归档)
+│   └── step3.9_learnable_routing.py # FAIL探索: NN路由 (2026-07-27归档)
+├── output/                          # 模型产出 (不入git)
 ├── results/                         # 图表+表格
 ├── docs/                            # 文档体系
-│   ├── logs/latest_0~15.log
-│   ├── sums/sum_1~12.md
+│   ├── logs/latest_0~16.log
+│   ├── sums/sum_1~13.md
 │   ├── specs/
+│   ├── 代码手→论文手交接说明.md
 │   └── migration_prompt.md
 └── Reference/                       # Agent认知重建
 ```

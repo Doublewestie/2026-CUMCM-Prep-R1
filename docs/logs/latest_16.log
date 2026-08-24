@@ -1,0 +1,37 @@
+2026-07-27 遗留收编: 诚实CV验证 + 口径统一 + TimesFM收尾 + 归档
+
+09:00 会话开启: 根据 migration_prompt 重建上下文; 发现 cb255fb 之后有 5 个未入库探索脚本
+      + 2 个已修改脚本 (step2_shared/step4.0), 文档体系未覆盖
+09:30 审计 5 个探索脚本:
+      step1.7+_tscv_validation.py — Q1 诚实 TS-CV (原 0.807 为 in-sample)
+      step1.10_learnable_beta.py — NN 学习 β/θ (FAIL: 0.588 < 手调 0.689)
+      step3.8+_forecast_cstr.py — Q3 诚实预测: AR(6) FILT → CSTR 链 (0.602→0.485)
+      step3.9_diagnostics.py — 路由/损失诊断 (routing 0.6165 仍最优)
+      step3.9_learnable_routing.py — NN 学习混合权重 (FAIL: 0.09 < if-else 0.617)
+      step2_shared.py +47 — AR6Predictor 类 (备用工具, 无消费方)
+      step4.0_risk_scoring.py +101 — USE_ACTUAL_NTU 前瞻模式 (评审 Issue#3 循环论证修复)
+10:00 重大口径发现:
+      Q1: 文档 0.732/0.807 与实测不符 — 0.732 是旧单 A=141.3 的 CV;
+          分 tier A + balance 的诚实 TS-CV = 0.6887 (RL/Q=8.0/48) 或 0.7369 (6.09/44)
+          in-sample = 0.7553 (8.0/48) 或 0.8023 (6.09/44)
+      Q3: step3.8 CV 0.602 的 CSTR 链用了真实 FILT(t) (oracle 口径);
+          部署口径 (AR(6) 预测 FILT) = 0.4853, oracle 上限 = 0.6165, FILT 预测代价 0.131
+      Q4: 前瞻模式 (CSTR预测NTU) 捕获率 88.76%→57.99%, 虚警 0%→1.21%, Kappa 0.522→0.296
+10:30 step1.7+_tscv_validation.py 参数可配置化 (--rl-med/--q-med), 默认 6.09/44 与 step1.7 同源
+      → 重跑: TS-CV 0.7369 (6.09/44), in-sample 0.8023; 输出带参数标签 JSON
+11:00 重跑全部探索脚本复现结论:
+      step3.8+_forecast_cstr.py — oracle 0.6165 / forecast 0.4853 / persist -3.35
+      step1.10_learnable_beta — FAIL 复现 (NN 0.5884 < tier-A 0.6889)
+      step3.9_diagnostics — routing 0.6165 > cstr_only 0.4834 > persist
+      step3.9_learnable_routing — FAIL 复现 (NN 0.09 < if-else 0.6165)
+      step4.0/4.1/4.2 前瞻链路 — 捕获率 57.99%, 虚警 1.21%, Kappa 全量 0.296/舒适区 0.877
+      step4.4 — 2026-03: G1×1, G2×11, G3/G4×0
+12:00 TimesFM 基线收尾: 用户在 base 环境发现我尝试安装 timesfm, 纠正应使用
+      mathorcup 环境 (D:\Anaconda\envs\mathorcup) — 已用 mathorcup 运行 step5.1 成功:
+      零样本预测均值 ~0.094 (feb1/10/20), 远低于实际 FILT 均值 0.21 → 失败基线证毕
+      输出: output/timesfm_baseline.csv → results/tables/ + results/timesfm_summary.json
+12:30 生成 results/number_census.csv (数字总表: 指标/口径/参数/复现命令/文档引用)
+13:00 代码处置: step1.10 + step3.9_learnable_routing → archive/ (FAIL 探索归档)
+      step3.8+ docstring 修正 (2026 预测未实现, 声明用 step3.8 Part C proxy)
+13:30 文档补齐: latest_16.log + sum_13 + migration_prompt/INDEX/CONSTITUTION/PLAN/README 更新
+测试状态: 全部重跑可复现, 数字总表逐行有复现命令

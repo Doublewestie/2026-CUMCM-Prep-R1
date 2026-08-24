@@ -2,7 +2,7 @@
 - document: PLAN-details.md
 - status: finalized (with superseded sections preserved for reference)
 - version: 2.0
-- last_updated: 2026-07-26 18:00
+- last_updated: 2026-07-27 14:30
 - project: CUMCM 2026 B题 自来水厂水质预测与评估
 - target: Q1/Q2/Q3/Q4 全部闭环, 转论文写作
 
@@ -75,8 +75,8 @@
 ## 2. Q1: 特征筛选与出厂浊度预测模型
 
 > **【已废止】** 以下 2.1-2.4 内容为原始 XGBoost+SHAP 方案的完整推导，保留备查。
-> 实际执行方案：三级分层灰箱 (CSTR+分tier A+平衡检测器), 见 `step1.7_final_cstr.py` + `docs/sums/sum_5/sum_7.md`。
-> 最终 R²=**0.807** (全量), 参数: A_T1=400, A_T2=250, A_T3=100/20 (平衡检测器)。
+> 实际执行方案：三级分层灰箱 (CSTR+分tier A+平衡检测器), 见 `step1.7_final_cstr.py` + `docs/sums/sum_5/sum_7.md` + `sum_13`。
+> 最终 in-sample R²=**0.807** (step1.7权威值), 诚实 TS-CV R²=**0.737** (step1.7+_tscv_validation, RL_med=6.09/Q_med=44), 参数: A_T1=400, A_T2=250, A_T3=100/20 (平衡检测器)。
 
 ### 2.1 变量定义表（废止）
 
@@ -473,7 +473,8 @@ flowchart TD
 
 CSTR 链: cs[0]=NTU(1:00), cs[i]=β₂·cs[i-1]+(1-β₂)·FILT(h)
 参数: α=0.34, γ=0.25, C_th=1.0 (全局扫描固定)
-CV R² = 0.602 (5-fold TS-CV)
+⚠️ 口径 (sum_13): 0.602 为 oracle 口径 (FILT真值已知+偏置表);
+诚实部署口径 (AR(6)预测FILT): CV R²=0.485, oracle 无偏置上限 0.617 (step3.8+_forecast_cstr.py)
 ```
 
 ---
@@ -1245,7 +1246,7 @@ flowchart TD
 | A_T2 | 250 | T2 (0.05<FILT≤0.15) |
 | A_same | 100 | T3, RL·Q同向 (平衡态) |
 | A_diff | 20 | T3, RL·Q反向 (失配态) |
-| R² | 0.807 | 全量 5-fold |
+| R² | 0.807 | in-sample (step1.7) / **0.737 TS-CV** (step1.7+, sum_13 口径) |
 
 ### Q2 log-AR(6)参数 (step2.5_logar_final.py)
 | 参数 | 值 | 说明 |
@@ -1259,13 +1260,16 @@ flowchart TD
 | α_B | 0.34 | Type B 中 CSTR 混合权重 |
 | γ_W | 0.25 | C_weak 区 CSTR 阻尼因子 |
 | C_th | 1.0 | CSTR 适用阈值 (FILT≥1.0) |
-| RL_med | 8.0 | Balance Detector RL 阈值 (优化后) |
-| Q_med | 48.0 | Balance Detector Q 阈值 (优化后) |
-| CV R² | 0.602 | 5-fold TS-CV |
+| RL_med | 6.09 | Balance Detector RL 阈值 (sum_13 统一回 step1.7 原值; Q3 优化备选 8.0) |
+| Q_med | 44.0 | Balance Detector Q 阈值 (sum_13 统一回原值; 备选 48.0) |
+| CV R² | 0.602 | oracle口径 (FILT真值, sum_12); **部署口径 0.485** (AR(6)预测FILT, step3.8+, sum_13) |
 
 ### Q4 风险评分
-| 指标 | 值 |
-|------|:---:|
-| 超标捕获率 | 88.76% |
-| 虚警率 | 0% |
-| 平均提前预警 | 20h |
+| 指标 | 值 | 口径 |
+|------|:---:|------|
+| 超标捕获率 | 88.76% | 回顾 (实际NTU, sum_9) |
+| 虚警率 | 0% | 回顾 |
+| 平均提前预警 | 20h | 回顾 |
+| 超标捕获率 | 57.99% | **前瞻 (CSTR预测NTU, sum_13 主口径)** |
+| 虚警率 | 1.21% | 前瞻 |
+| Kappa 舒适区 | 0.877 | 前瞻 |

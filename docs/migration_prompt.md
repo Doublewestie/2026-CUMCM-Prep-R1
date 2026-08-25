@@ -52,17 +52,8 @@
 - `Code/docs/logs/latest_16.log` — 遗留收编: 诚实CV验证 + 口径统一 + TimesFM收尾 (2026-07-27)
 - `Code/docs/logs/latest_15.log` — Q3终局开发 + 文档整理 (2026-07-26)
 
-### 必读（论文材料区 — 论文写作唯一入口）
-- **`Code/docs/materials/00_素材总览.md`** — 材料区唯一根入口（类别登记+核心发现速览+口径红线）
-- `Code/docs/materials/02_核心文档/口径声明大全.md` — 引用数字前必查（M1-M4 修正历史）
-- `Code/docs/materials/02_核心文档/数字总表.md` — 派生自 results/number_census.csv
-- `Code/docs/materials/02_核心文档/路线叙事_要点式.md` — 六转折点叙事
-- **`Code/docs/materials/02_核心文档/研究思路主线.md`** — v2 实验项: 四段式(规划/实施/复查/材料) + 转折点 T1-T7 + 粘合度信号
-- `Code/docs/materials/02_核心文档/论文大纲.md` + `Q1章节初稿.md` + `Q2章节初稿.md` — 论文写作进度
-- `Code/docs/materials/01_主题素材/` — 六张七要素主题卡（数据/方法/模型/模型_Q3/风险/方法学）
-- `Code/docs/materials/03_文献库/` — 引用卡库(6正式卡) + 候选清单与参考文献表 + 取用层（⚠️ 6 篇 DOI 待人工核验）
-- `Code/docs/materials/04_亮点档案/` — 状态机表(IN-01~14) + 主线树与口径复用表 + 反例档案 + 创新点取用层
-- `Code/docs/materials/05_审查与总账/` — audit_1(收敛) + defense_自检报告(18/18守住) + 守卫运行记录 + v1迭代清单
+### 必读（论文材料区 — 唯一契约点）
+- **`Code/docs/materials/00_素材总览.md`** — 材料区唯一契约点：**到达后必须按其中 §1 必读（口径声明/数字总表/audit/研究思路/路线叙事/defense）→ §2 速读 → §3 按需 完整执行**，红线文档不可跳过；材料区全部 26 份文件由该总览导航，此处不再逐条列出
 
 ### 必读（守卫）
 - **`Code/tests/test_core_guards.py`** — 论文必引数字守卫 G1-G10（10/10 全绿）；修改产物后运行 `python tests/test_core_guards.py` 验证

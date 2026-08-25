@@ -4,6 +4,10 @@
 
 加载 `agent-memory`，了解 `Code/docs/` 下的 `sums/`、`specs/`、`logs/` 目录结构。
 
+> **时期 C（论文材料）**: 建模完成后启动 **math-paper-production**（.dsh/skills/，
+> 时期 C 编排器：六步链/DoD/守卫任务/条款分级/人工核验点）——auto 只管 B 期，
+> 材料期由其独立承接；速查手册 `.dsh/math系列速查手册.md` 第七节为接线导航。
+
 ---
 
 ## Step 2: 阅读全部关键文档

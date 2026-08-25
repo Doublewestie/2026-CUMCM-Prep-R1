@@ -66,3 +66,12 @@
       - 修复: migration_prompt 补登 01-05 目录+守卫+文献纪律 (Step2/3/4 同步)
       - 修复: INDEX 补登 26 份材料 + 守卫; PLAN 文件清单+变更记录
       - 验证: git 干净后提交
+18:50 全系列 skill 项目残留审查 (用户哲学: skill=高层思维引导):
+      - 触发: 用户质疑 math-paper-production "粘合度信号/供v2→v3归属决策" 为项目残留
+      - 三层标准: L1执行痕迹(必清) / L2案例锚点(可留) / L3正文主体(必为高层思维)
+      - 修复 L1×4: math-auto(实验草稿层) math-index(协议草稿) math-materials(示例类别)
+        math-defense(答辩发言稿去人名)
+      - 保留 L2×10: 碳杠杆/PointNet/储能等案例锚点 (例子是思维抓手非规范)
+      - 产出: docs/materials/05_审查与总账/review_skill残留审计.md + 5条Method纪律
+      - math-paper-production 同步去残留: 粘合度信号→体系关系自评, 头部去版本化
+      - 对账门: 14 skill × 双目录 × 双项目 md5 全唯一; L1 全域清零; Code 仓库干净

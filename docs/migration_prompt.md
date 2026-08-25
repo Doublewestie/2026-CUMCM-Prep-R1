@@ -7,6 +7,10 @@
 > **时期 C（论文材料）**: 建模完成后启动 **math-paper-production**（.dsh/skills/，
 > 时期 C 编排器：六步链/DoD/守卫任务/条款分级/人工核验点）——auto 只管 B 期，
 > 材料期由其独立承接；速查手册 `.dsh/math系列速查手册.md` 第七节为接线导航。
+>
+> **表达与合规**：表达纪律/去 AI 味 → **math-expression**（.dsh/skills/，材料/日志/
+> 对话档：先定档再动手，去味不洗稿；语言层调全局 humanizer-zh）；递交/提交前 →
+> **math-compliance**（26 条自查 + AI 声明，消费 audit_N 与复查报告）。
 
 ---
 

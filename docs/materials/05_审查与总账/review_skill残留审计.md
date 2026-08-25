@@ -72,3 +72,20 @@
 - math-methods "华数杯/华为杯" 用比赛名当类型标签：若未来有多个项目的比赛名进入，
   可抽象为"合成数据题类比赛"（本轮不动，避免过度修改）
 - 审查本身未写入任何 skill 本体（审查是过程纪律，不是 skill 内容）
+
+## 六、体系状态更新（2026-08-26 追加：表达与合规双节点）
+
+- 新增 **math-expression**（表达层总纲：九痕迹/改写工程/六要素搬运/降重四层/强度分级/人机协作；
+  references = 讲义全量 + 可读性建议全量 + 升维阶梯 + Humanizer 数模适配层，零信息损失）
+- 新增 **math-compliance**（提交前合规门：26 子维度全表 + 五段式报告 + AI 声明模板；
+  消费 audit_N/复查报告，不重复核验；【论文手侧】条目移交）
+- 全局部署 **humanizer-zh**（原样复制至 .agents/skills/，md5 与源一致；math 系列只引用）
+- 改造：math-paper（可读性工程节）/ math-materials（速读表达）/ math-methods（语言层挂靠）/
+  math-paper-production（接口+自检，六步链不动）/ agent-memory（日志语言纪律）/
+  对称登记：math-defense / math-auto / math-wisdom-reflect / math-review / math-consistency
+- 接线：math-index 15 节点登记；速查手册 md+html 16 个 skill（快照口径 2026-08-26）；
+  migration_prompt ×2；节点计数 13→15、文件计数 14→16 全域清零
+- 本轮自检修复：①表达式示例误携项目数字（57.99%→X%/Y%）；②来源注记"标准版2"清理；
+  ③历史遗留 CRLF（题目2/.dsh/math-auto）统一 LF；④残留"第 13 节点"四处同步
+- 新节点条款分级：讲义/Humanizer/自查表 = 可靠素材（外部成熟资料）；强度分级/升维/
+  六要素搬运/适配层 = 实验条款，待首轮实战复核
